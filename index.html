@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medieval Conquest</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="map-area">
+            <canvas id="game-canvas"></canvas>
+            <div id="info-panel">
+                <span id="hex-info">Hover over a hex</span>
+            </div>
+        </div>
+        <div id="sidebar">
+            <div id="sidebar-title">Medieval Conquest</div>
+            <div id="sidebar-buttons">
+                <button id="new-game-btn">New Game</button>
+                <button id="end-turn-btn">End Turn</button>
+                <button id="toggle-grid-btn">Toggle Grid</button>
+                <button id="toggle-coords-btn">Show Coords</button>
+            </div>
+            <div id="sidebar-info">
+                <div class="info-row">
+                    <span class="info-label">Turn:</span>
+                    <span id="turn-display">1</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Castles:</span>
+                    <span id="castle-display">0/3</span>
+                </div>
+            </div>
+            <div id="sidebar-help">
+                <div class="help-title">Keyboard:</div>
+                <div class="help-item">G - Grid</div>
+                <div class="help-item">C - Coords</div>
+                <div class="help-item">E - End Turn</div>
+                <div class="help-item">ESC - Deselect</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Victory Modal -->
+    <div id="victory-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">GLORIOUS VICTORY!</div>
+            <div class="modal-body">
+                <p>The enemy strongholds have fallen!</p>
+                <p>Your banner flies over all three castles.</p>
+                <p class="modal-footer-text">The realm is yours, my liege!</p>
+            </div>
+            <button id="victory-ok-btn" class="modal-btn">Long Live the King!</button>
+        </div>
+    </div>
+
+    <!-- Load scripts in order -->
+    <script src="js/config.js"></script>
+    <script src="js/core/hex.js"></script>
+    <script src="js/terrain/terrainTypes.js"></script>
+    <script src="js/units/unitTypes.js"></script>
+    <script src="js/units/unit.js"></script>
+    <script src="js/core/map.js"></script>
+    <script src="js/core/gameState.js"></script>
+    <script src="js/rendering/hexRenderer.js"></script>
+    <script src="js/rendering/edgeRenderer.js"></script>
+    <script src="js/rendering/fogOfWar.js"></script>
+    <script src="js/rendering/unitRenderer.js"></script>
+    <script src="js/rendering/renderer.js"></script>
+    <script src="js/utils/storage.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
