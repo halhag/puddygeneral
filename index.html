@@ -55,6 +55,62 @@
         </div>
     </div>
 
+    <!-- Battle Modal -->
+    <div id="battle-modal" class="modal hidden">
+        <div class="modal-content battle-modal">
+            <div class="modal-header">BATTLE RESULTS</div>
+            <div class="modal-body">
+                <div class="battle-versus">
+                    <div class="battle-unit-panel attacker">
+                        <div class="battle-unit-name" id="battle-attacker-name">Attacker</div>
+                        <div class="battle-unit-stats">
+                            <span id="battle-attacker-before">10</span>
+                            <span class="battle-arrow">&#8594;</span>
+                            <span id="battle-attacker-after">7</span>
+                        </div>
+                        <div class="battle-damage" id="battle-attacker-damage">-3</div>
+                    </div>
+                    <span class="vs-text">VS</span>
+                    <div class="battle-unit-panel defender">
+                        <div class="battle-unit-name" id="battle-defender-name">Defender</div>
+                        <div class="battle-unit-stats">
+                            <span id="battle-defender-before">10</span>
+                            <span class="battle-arrow">&#8594;</span>
+                            <span id="battle-defender-after">6</span>
+                        </div>
+                        <div class="battle-damage" id="battle-defender-damage">-4</div>
+                    </div>
+                </div>
+                <p class="battle-status" id="battle-status">Both units survive.</p>
+                <!-- Debug/Dev Info -->
+                <div class="battle-details">
+                    <div class="battle-details-header">Combat Details</div>
+                    <div class="battle-details-row">
+                        <span class="detail-label">Power:</span>
+                        <span id="battle-power-info">16 vs 20 (ratio: 0.80)</span>
+                    </div>
+                    <div class="battle-details-row">
+                        <span class="detail-label">Entrenchment:</span>
+                        <span id="battle-entrench-info">0 vs 3 → 2</span>
+                    </div>
+                    <div class="battle-details-row">
+                        <span class="detail-label">Experience:</span>
+                        <span id="battle-exp-info">0 vs 0</span>
+                    </div>
+                    <div class="battle-details-row">
+                        <span class="detail-label">Initiative:</span>
+                        <span id="battle-init-info">+1 (attacker only)</span>
+                    </div>
+                    <div class="battle-details-row">
+                        <span class="detail-label">Raw Damage:</span>
+                        <span id="battle-raw-damage">Atk: 4.2, Def: 2.8</span>
+                    </div>
+                </div>
+            </div>
+            <button id="battle-ok-btn" class="modal-btn">Continue</button>
+        </div>
+    </div>
+
     <!-- Load scripts in order -->
     <script src="js/config.js"></script>
     <script src="js/core/hex.js"></script>
@@ -69,6 +125,7 @@
     <script src="js/rendering/unitRenderer.js"></script>
     <script src="js/rendering/renderer.js"></script>
     <script src="js/utils/storage.js"></script>
+    <script src="js/combat/battleResolver.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

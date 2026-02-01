@@ -199,3 +199,28 @@ function canEnterHex(terrain, edgeFeature, remainingMovement, totalMovement) {
     // Normal terrain - need enough movement
     return remainingMovement >= terrainProps.movementCost;
 }
+
+/**
+ * Entrenchment rules by terrain type
+ * - minimum: Starting/floor entrenchment level
+ * - maximum: Maximum entrenchment level (always 8)
+ * - canFallBelowMinimum: Whether attacks can reduce below minimum
+ */
+const ENTRENCHMENT_RULES = {
+    [TerrainType.GRASS]: { minimum: 0, maximum: 8, canFallBelowMinimum: false },
+    [TerrainType.WOODS]: { minimum: 2, maximum: 8, canFallBelowMinimum: false },  // Woods provide natural cover
+    [TerrainType.CASTLE]: { minimum: 3, maximum: 8, canFallBelowMinimum: true },  // Castle starts high but can be breached
+    [TerrainType.HILL]: { minimum: 0, maximum: 8, canFallBelowMinimum: false },
+    [TerrainType.RIVER]: { minimum: 0, maximum: 8, canFallBelowMinimum: false },
+    [TerrainType.MOUNTAIN]: { minimum: 0, maximum: 8, canFallBelowMinimum: false },
+    [TerrainType.WATER]: { minimum: 0, maximum: 8, canFallBelowMinimum: false }
+};
+
+/**
+ * Get entrenchment rules for a terrain type
+ * @param {string} terrainType - The terrain type
+ * @returns {Object} Entrenchment rules { minimum, maximum, canFallBelowMinimum }
+ */
+function getEntrenchmentRules(terrainType) {
+    return ENTRENCHMENT_RULES[terrainType] || ENTRENCHMENT_RULES[TerrainType.GRASS];
+}

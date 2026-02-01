@@ -11,10 +11,24 @@ class UnitRenderer {
     /**
      * Draw all units
      * @param {UnitManager} unitManager
+     * @param {GameState} gameState - Used to check visibility
      */
-    drawUnits(unitManager) {
+    drawUnits(unitManager, gameState = null) {
         for (const unit of unitManager.getAllUnits()) {
-            this.drawUnit(unit);
+            // If fog of war is enabled, only draw enemy units if visible
+            if (gameState && gameState.settings.fogOfWar) {
+                // Always draw own units
+                if (unit.playerId === gameState.currentPlayer) {
+                    this.drawUnit(unit);
+                }
+                // Only draw enemy units if they're visible
+                else if (gameState.isHexVisible(unit.hex)) {
+                    this.drawUnit(unit);
+                }
+            } else {
+                // No fog of war, draw all units
+                this.drawUnit(unit);
+            }
         }
     }
 

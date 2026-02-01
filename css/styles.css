@@ -200,3 +200,131 @@ body {
     background: linear-gradient(180deg, #a07818 0%, #6b5212 100%);
     box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
 }
+
+/* Battle Modal Specific Styles */
+.battle-modal {
+    max-width: 450px;
+}
+
+.battle-modal .modal-header {
+    color: #ff6b6b;
+}
+
+.battle-versus {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.battle-unit-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px 20px;
+    border-radius: 8px;
+    min-width: 130px;
+}
+
+.battle-unit-panel.attacker {
+    background: rgba(100, 149, 237, 0.2);
+    border: 2px solid #6495ed;
+}
+
+.battle-unit-panel.defender {
+    background: rgba(255, 107, 107, 0.2);
+    border: 2px solid #ff6b6b;
+}
+
+.battle-unit-name {
+    font-weight: bold;
+    font-size: 14px;
+    margin-bottom: 10px;
+    color: #e0e0e0;
+}
+
+.battle-unit-panel.attacker .battle-unit-name {
+    color: #87ceeb;
+}
+
+.battle-unit-panel.defender .battle-unit-name {
+    color: #ffa0a0;
+}
+
+.battle-unit-stats {
+    font-size: 28px;
+    font-weight: bold;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.battle-arrow {
+    color: #ffd700;
+    font-size: 20px;
+}
+
+.battle-damage {
+    font-size: 18px;
+    margin-top: 10px;
+    font-weight: bold;
+    color: #ff6b6b;
+}
+
+.battle-status {
+    margin-top: 15px;
+    font-size: 16px;
+    color: #ffd700;
+    font-weight: bold;
+}
+
+.vs-text {
+    color: #ffd700;
+    font-weight: bold;
+    font-size: 24px;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Destroyed unit styling */
+.unit-destroyed {
+    color: #ff4444 !important;
+    text-decoration: line-through;
+}
+
+/* Battle Details (dev/debug info) */
+.battle-details {
+    margin-top: 20px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    border: 1px solid #4a4a6a;
+    text-align: left;
+}
+
+.battle-details-header {
+    color: #aaa;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #4a4a6a;
+    padding-bottom: 5px;
+}
+
+.battle-details-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 3px 0;
+}
+
+.detail-label {
+    color: #888;
+}
+
+.battle-details-row span:last-child {
+    color: #e0e0e0;
+    font-family: 'Consolas', 'Courier New', monospace;
+}

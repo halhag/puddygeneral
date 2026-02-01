@@ -31,12 +31,14 @@ class GameState {
         this.capturedCastles = [];      // Array of captured castle hex keys
         this.totalCastles = 3;          // Castles needed to win (enemy castles)
         this.settings = {
-            fogOfWar: false,
+            fogOfWar: true,     // Fog of war is now ON by default
             showGrid: true,
             showCoordinates: false
         };
         // Internal cache for movement costs (set by getValidMovementHexes)
         this._movementCosts = new Map();
+        // Cache for visible hexes (recalculated when units move)
+        this._visibleHexes = new Set();
     }
 
     // Create a new game with default map
@@ -51,7 +53,40 @@ class GameState {
         state.phase = GamePhase.PLACEMENT;
         state.unitsToPlace = 3;
         state.capturedCastles = [];
+
+        // Place enemy units in the 3 enemy castles (left side of map)
+        state.placeEnemyUnits();
+
         return state;
+    }
+
+    /**
+     * Place enemy units in their starting castles
+     * Enemy castles are on the left side of the map
+     */
+    placeEnemyUnits() {
+        // Enemy castle positions (q, vRow) - convert to axial
+        const enemyCastles = [
+            { q: 2, vRow: 2 },      // Top-left castle
+            { q: 10, vRow: 7 },     // Center castle
+            { q: 3, vRow: 13 }      // Bottom-left castle
+        ];
+
+        for (const pos of enemyCastles) {
+            // Convert visual row to axial r: r = vRow - q/2
+            const r = pos.vRow - pos.q / 2;
+            const hex = new Hex(pos.q, r);
+
+            // Create enemy infantry (player 1 = enemy/red)
+            const unit = new Unit('infantry', 1, hex);
+            this.units.addUnit(unit);
+
+            // Set initial entrenchment based on terrain (castle = 3 minimum)
+            const cell = this.map.getCell(hex);
+            if (cell) {
+                unit.updateEntrenchment(cell.terrain);
+            }
+        }
     }
 
     // Serialize for LocalStorage
@@ -244,6 +279,7 @@ class GameState {
 
     /**
      * Get hexes a unit can move to
+     * Accounts for zone of control (must stop when entering enemy ZOC)
      * @param {Unit} unit - The unit to check movement for
      * @returns {Array<Hex>} Array of reachable hexes
      */
@@ -254,15 +290,34 @@ class GameState {
         }
 
         const reachable = [];
-        const visited = new Map(); // hex.key -> cost to reach
-        const queue = [{ hex: unit.hex, cost: 0 }];
-        visited.set(unit.hex.key, 0);
+        const visited = new Map(); // hex.key -> { cost, stoppedByZOC }
+        const queue = [{ hex: unit.hex, cost: 0, stoppedByZOC: false }];
+        visited.set(unit.hex.key, { cost: 0, stoppedByZOC: false });
 
         while (queue.length > 0) {
-            const { hex, cost } = queue.shift();
+            const { hex, cost, stoppedByZOC } = queue.shift();
 
             // Check all neighbors
             for (let dir = 0; dir < 6; dir++) {
+                // If we're stopped by ZOC, we can ONLY attack adjacent enemies
+                // We cannot move to other hexes from here
+                if (stoppedByZOC) {
+                    const neighbor = hex.neighbor(dir);
+                    const occupant = this.units.getUnitAt(neighbor);
+                    if (occupant && occupant.playerId !== this.currentPlayer) {
+                        // Found an adjacent enemy - this is a valid attack target
+                        const prev = visited.get(neighbor.key);
+                        // Always add to reachable if not already there
+                        if (prev === undefined) {
+                            visited.set(neighbor.key, { cost: cost + 1, stoppedByZOC: true });
+                        }
+                        // Add to reachable if not already in the list
+                        if (!reachable.some(h => h.equals(neighbor))) {
+                            reachable.push(neighbor);
+                        }
+                    }
+                    continue; // Don't process other movement from ZOC hex
+                }
                 const neighbor = hex.neighbor(dir);
                 if (!this.map.hasCell(neighbor)) continue;
 
@@ -294,13 +349,32 @@ class GameState {
 
                 // Check if occupied by another unit
                 const occupant = this.units.getUnitAt(neighbor);
-                if (occupant) continue;
+                if (occupant) {
+                    // Can't move into friendly units
+                    if (occupant.playerId === this.currentPlayer) {
+                        continue;
+                    }
+                    // Enemy unit: allow as destination (clicking = attack intent)
+                    // But can't path THROUGH enemy hex, so mark as stopped and don't explore further
+                    const prev = visited.get(neighbor.key);
+                    if (prev === undefined || totalCost < prev.cost) {
+                        visited.set(neighbor.key, { cost: totalCost, stoppedByZOC: true });
+                        // DON'T add to queue - can't move through enemy
+                        if (!neighbor.equals(unit.hex)) {
+                            reachable.push(neighbor);
+                        }
+                    }
+                    continue;
+                }
+
+                // Check if this hex enters enemy zone of control (visible enemies only)
+                const entersZOC = this.isInEnemyZOC(neighbor);
 
                 // Check if we found a better path
-                const prevCost = visited.get(neighbor.key);
-                if (prevCost === undefined || totalCost < prevCost) {
-                    visited.set(neighbor.key, totalCost);
-                    queue.push({ hex: neighbor, cost: totalCost });
+                const prev = visited.get(neighbor.key);
+                if (prev === undefined || totalCost < prev.cost) {
+                    visited.set(neighbor.key, { cost: totalCost, stoppedByZOC: entersZOC });
+                    queue.push({ hex: neighbor, cost: totalCost, stoppedByZOC: entersZOC });
                     if (!neighbor.equals(unit.hex)) {
                         reachable.push(neighbor);
                     }
@@ -308,42 +382,114 @@ class GameState {
             }
         }
 
-        // Cache movement costs for use by moveUnit
-        this._movementCosts = visited;
+        // Cache movement costs for use by moveUnit (just the costs)
+        this._movementCosts = new Map();
+        for (const [key, data] of visited) {
+            this._movementCosts.set(key, data.cost);
+        }
 
         return reachable;
     }
 
     /**
      * Move a unit to a new hex
+     * Battle only triggers when clicking on enemy's hex (visible or hidden)
      * @param {Unit} unit - The unit to move
      * @param {Hex} targetHex - Destination hex
-     * @returns {boolean} True if move succeeded
+     * @returns {Object} Result: { success, battleTriggered, enemyUnit, actualHex }
      */
     moveUnit(unit, targetHex) {
-        if (!unit || !unit.canMove()) return false;
+        if (!unit || !unit.canMove()) {
+            return { success: false, battleTriggered: false, enemyUnit: null, actualHex: null };
+        }
 
         // Get valid moves (this also caches movement costs)
         const validMoves = this.getValidMovementHexes(unit);
         const isValid = validMoves.some(h => h.equals(targetHex));
-        if (!isValid) return false;
+        if (!isValid) {
+            return { success: false, battleTriggered: false, enemyUnit: null, actualHex: null };
+        }
+
+        // Check for enemy at target hex (visible or hidden)
+        // This is the ONLY way battle is triggered - clicking on enemy's hex
+        const enemyAtTarget = this.units.getUnitAt(targetHex);
+        if (enemyAtTarget && enemyAtTarget.playerId !== this.currentPlayer) {
+            // Player clicked on enemy's hex = attack intent
+            // Unit stops adjacent to enemy, then battle commences
+            const stopHex = this.findStopHexBeforeEnemy(unit, targetHex);
+            if (stopHex) {
+                const moveCost = this._movementCosts.get(stopHex.key);
+                unit.hex = stopHex;
+                unit.useMovement(moveCost, stopHex);
+                this.updateVisibility();
+
+                return {
+                    success: true,
+                    battleTriggered: true,
+                    enemyUnit: enemyAtTarget,
+                    actualHex: stopHex
+                };
+            } else {
+                // Can't find a valid stop hex (shouldn't happen normally)
+                return { success: false, battleTriggered: false, enemyUnit: null, actualHex: null };
+            }
+        }
 
         // Get the cached path cost (calculated by getValidMovementHexes)
         const moveCost = this._movementCosts ? this._movementCosts.get(targetHex.key) : null;
 
         if (moveCost === null || moveCost === undefined) {
             console.error('Movement cost not found for target hex');
-            return false;
+            return { success: false, battleTriggered: false, enemyUnit: null, actualHex: null };
         }
 
-        // Move the unit
+        // Move the unit to target (no battle - just movement)
         unit.hex = targetHex;
-        unit.useMovement(moveCost);
+        unit.useMovement(moveCost, targetHex);
+
+        // Update visibility after movement
+        this.updateVisibility();
+
+        // NOTE: Moving into ZOC does NOT trigger battle - only clicking on enemy hex does
+        // Unit simply stops in ZOC (handled by getValidMovementHexes preventing further movement)
 
         // Check if unit moved onto a castle
         this.checkCastleCapture(targetHex);
 
-        return true;
+        return { success: true, battleTriggered: false, enemyUnit: null, actualHex: targetHex };
+    }
+
+    /**
+     * Find a hex adjacent to the enemy where the unit can stop
+     * Used when encountering a hidden enemy
+     * @param {Unit} unit - The moving unit
+     * @param {Hex} enemyHex - The hex with the hidden enemy
+     * @returns {Hex|null} The hex to stop at, or null if none found
+     */
+    findStopHexBeforeEnemy(unit, enemyHex) {
+        let bestHex = null;
+        let bestCost = Infinity;
+
+        // Check all hexes adjacent to the enemy
+        for (let dir = 0; dir < 6; dir++) {
+            const adjacentHex = enemyHex.neighbor(dir);
+
+            // Must be a valid move target (in our cached costs)
+            const cost = this._movementCosts.get(adjacentHex.key);
+            if (cost === undefined) continue;
+
+            // Must not be occupied
+            const occupant = this.units.getUnitAt(adjacentHex);
+            if (occupant && !occupant.hex.equals(unit.hex)) continue;
+
+            // Must be closer to our starting position (prefer lower cost)
+            if (cost < bestCost) {
+                bestCost = cost;
+                bestHex = adjacentHex;
+            }
+        }
+
+        return bestHex;
     }
 
     /**
@@ -380,10 +526,176 @@ class GameState {
      * End the current turn manually
      */
     endTurn() {
+        // Update entrenchment for all units before resetting turn
+        // Units in enemy ZOC cannot build entrenchment
+        this.updateAllEntrenchments();
+
         // Reset all player units for next turn
         this.units.resetTurn(this.currentPlayer);
         this.turn++;
         this.deselectHex();
         this.deselectUnit();
+
+        // Recalculate visibility for the current player
+        this.updateVisibility();
+    }
+
+    /**
+     * Update entrenchment for all units
+     * Units in enemy ZOC cannot gain entrenchment (can't build when enemy is watching)
+     */
+    updateAllEntrenchments() {
+        for (const unit of this.units.getAllUnits()) {
+            // Check if this unit is in ZOC of any enemy
+            const inEnemyZOC = this.isUnitInAnyEnemyZOC(unit);
+
+            if (inEnemyZOC) {
+                // Can't build entrenchment when in enemy ZOC
+                // Reset stationary counter since they can't dig in
+                unit.turnsStationary = 0;
+            } else {
+                // Update entrenchment based on terrain and time stationary
+                const cell = this.map.getCell(unit.hex);
+                if (cell) {
+                    unit.updateEntrenchment(cell.terrain);
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if a unit is in ZOC of any enemy unit (regardless of visibility)
+     * Used for entrenchment calculation - can't dig in when enemies are adjacent
+     * @param {Unit} unit - The unit to check
+     * @returns {boolean}
+     */
+    isUnitInAnyEnemyZOC(unit) {
+        for (let dir = 0; dir < 6; dir++) {
+            const neighbor = unit.hex.neighbor(dir);
+            const adjacentUnit = this.units.getUnitAt(neighbor);
+            if (adjacentUnit && adjacentUnit.playerId !== unit.playerId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ==================== FOG OF WAR ====================
+
+    /**
+     * Update visibility based on current player's units
+     * Each unit can see hexes within their spotting range
+     */
+    updateVisibility() {
+        this._visibleHexes = new Set();
+
+        const playerUnits = this.units.getPlayerUnits(this.currentPlayer);
+        for (const unit of playerUnits) {
+            const spotting = unit.getType().spotting;
+            const visibleFromUnit = this.getHexesInRange(unit.hex, spotting);
+            for (const hex of visibleFromUnit) {
+                this._visibleHexes.add(hex.key);
+            }
+        }
+    }
+
+    /**
+     * Get all hexes within a certain range of a center hex
+     * @param {Hex} center - The center hex
+     * @param {number} range - The range in hexes
+     * @returns {Array<Hex>} Array of hexes within range
+     */
+    getHexesInRange(center, range) {
+        const hexes = [center];
+        const visited = new Set([center.key]);
+
+        let frontier = [center];
+        for (let r = 0; r < range; r++) {
+            const nextFrontier = [];
+            for (const hex of frontier) {
+                for (let dir = 0; dir < 6; dir++) {
+                    const neighbor = hex.neighbor(dir);
+                    if (!visited.has(neighbor.key) && this.map.hasCell(neighbor)) {
+                        visited.add(neighbor.key);
+                        hexes.push(neighbor);
+                        nextFrontier.push(neighbor);
+                    }
+                }
+            }
+            frontier = nextFrontier;
+        }
+
+        return hexes;
+    }
+
+    /**
+     * Check if a hex is visible to the current player
+     * @param {Hex} hex - The hex to check
+     * @returns {boolean}
+     */
+    isHexVisible(hex) {
+        if (!this.settings.fogOfWar) return true;
+        return this._visibleHexes.has(hex.key);
+    }
+
+    /**
+     * Check if an enemy unit at a hex is visible to the current player
+     * @param {Hex} hex - The hex to check
+     * @returns {boolean}
+     */
+    isEnemyVisible(hex) {
+        return this.isHexVisible(hex);
+    }
+
+    // ==================== ZONE OF CONTROL ====================
+
+    /**
+     * Check if a hex is in an enemy's zone of control (adjacent to VISIBLE enemy unit)
+     * Hidden enemies don't project ZOC - you can't know about them!
+     * @param {Hex} hex - The hex to check
+     * @returns {boolean}
+     */
+    isInEnemyZOC(hex) {
+        for (let dir = 0; dir < 6; dir++) {
+            const neighbor = hex.neighbor(dir);
+            const unit = this.units.getUnitAt(neighbor);
+            if (unit && unit.playerId !== this.currentPlayer) {
+                // Only VISIBLE enemies create ZOC
+                if (this.isHexVisible(neighbor)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get enemy units adjacent to a hex
+     * @param {Hex} hex - The hex to check
+     * @returns {Array<Unit>} Array of adjacent enemy units
+     */
+    getAdjacentEnemies(hex) {
+        const enemies = [];
+        for (let dir = 0; dir < 6; dir++) {
+            const neighbor = hex.neighbor(dir);
+            const unit = this.units.getUnitAt(neighbor);
+            if (unit && unit.playerId !== this.currentPlayer) {
+                enemies.push(unit);
+            }
+        }
+        return enemies;
+    }
+
+    /**
+     * Check if a hex contains a visible enemy unit
+     * @param {Hex} hex - The hex to check
+     * @returns {Unit|null} The enemy unit if visible, null otherwise
+     */
+    getVisibleEnemyAt(hex) {
+        const unit = this.units.getUnitAt(hex);
+        if (unit && unit.playerId !== this.currentPlayer && this.isEnemyVisible(hex)) {
+            return unit;
+        }
+        return null;
     }
 }

@@ -25,11 +25,18 @@ class Unit {
         // Instance state
         this.strength = 10;         // Current health (0-10, like PGII)
         this.ammo = unitType.maxAmmo;  // Current ammo (null if unlimited)
-        this.experience = 0;        // Veterancy level (0-5, future use)
+        this.experience = 0;        // Veterancy level (0-5)
+        this.entrenchment = 0;      // Dig-in level (0-8)
+        this.suppression = 0;       // Suppression value (ignored for now)
 
         // Turn state (reset each turn)
         this.movementRemaining = unitType.movement;
         this.hasAttacked = false;
+        this.hasMoved = false;      // Can only move once per turn
+
+        // Tracking for entrenchment
+        this.turnsStationary = 0;   // Turns without moving (for entrenchment calculation)
+        this.lastHex = hex;         // Track last position for movement detection
     }
 
     /**
@@ -50,10 +57,11 @@ class Unit {
 
     /**
      * Check if unit can still move this turn
+     * Units can only move once per turn (not multiple small moves)
      * @returns {boolean}
      */
     canMove() {
-        return this.movementRemaining > 0 && this.strength > 0;
+        return !this.hasMoved && this.movementRemaining > 0 && this.strength > 0;
     }
 
     /**
@@ -75,13 +83,24 @@ class Unit {
     /**
      * Use movement points
      * @param {number} cost - Movement cost
+     * @param {Hex} newHex - The hex unit moved to
      * @returns {boolean} True if movement was successful
      */
-    useMovement(cost) {
+    useMovement(cost, newHex = null) {
         if (cost > this.movementRemaining) {
             return false;
         }
         this.movementRemaining -= cost;
+        this.hasMoved = true;
+
+        // Moving resets entrenchment and stationary counter
+        this.turnsStationary = 0;
+        this.entrenchment = 0;
+
+        if (newHex) {
+            this.lastHex = newHex;
+        }
+
         return true;
     }
 
@@ -137,6 +156,55 @@ class Unit {
         const unitType = this.getType();
         this.movementRemaining = unitType.movement;
         this.hasAttacked = false;
+        this.hasMoved = false;
+
+        // Increment stationary counter if unit didn't move last turn
+        // Entrenchment is calculated separately based on terrain
+        this.turnsStationary++;
+    }
+
+    /**
+     * Calculate and update entrenchment based on terrain and time
+     * @param {string} terrainType - The terrain type the unit is on
+     */
+    updateEntrenchment(terrainType) {
+        // Get terrain-specific entrenchment rules
+        const rules = getEntrenchmentRules(terrainType);
+
+        // Calculate base entrenchment from turns stationary (1 level per 2 turns)
+        const earnedEntrenchment = Math.floor(this.turnsStationary / 2);
+
+        // Apply terrain minimum and maximum
+        let newEntrenchment = Math.max(rules.minimum, earnedEntrenchment);
+        newEntrenchment = Math.min(newEntrenchment, rules.maximum);
+
+        this.entrenchment = newEntrenchment;
+    }
+
+    /**
+     * Reduce entrenchment when attacked
+     */
+    reduceEntrenchment() {
+        this.entrenchment = Math.max(0, this.entrenchment - 1);
+    }
+
+    /**
+     * Gain experience from combat
+     * Formula: 0.1 + (5% of strength lost) with ±20% Gaussian variance
+     * @param {number} strengthLost - How much strength this unit lost in combat
+     * @returns {number} The actual experience gained (for display)
+     */
+    gainExperience(strengthLost) {
+        // Base experience: 0.1 + 5% of strength lost
+        const baseExp = 0.1 + (strengthLost * 0.05);
+
+        // Apply ±20% Gaussian variance (stdDev of ~10% gives ~20% range at 2 sigma)
+        // Using simple random variance since gaussianRandom is in battleResolver
+        const variance = 1 + (Math.random() - 0.5) * 0.4;  // 0.8 to 1.2
+        const expGain = baseExp * variance;
+
+        this.experience += expGain;
+        return expGain;
     }
 
     /**
@@ -179,8 +247,12 @@ class Unit {
             strength: this.strength,
             ammo: this.ammo,
             experience: this.experience,
+            entrenchment: this.entrenchment,
+            suppression: this.suppression,
             movementRemaining: this.movementRemaining,
-            hasAttacked: this.hasAttacked
+            hasAttacked: this.hasAttacked,
+            hasMoved: this.hasMoved,
+            turnsStationary: this.turnsStationary
         };
     }
 
@@ -195,8 +267,12 @@ class Unit {
         unit.strength = data.strength;
         unit.ammo = data.ammo;
         unit.experience = data.experience || 0;
+        unit.entrenchment = data.entrenchment || 0;
+        unit.suppression = data.suppression || 0;
         unit.movementRemaining = data.movementRemaining;
         unit.hasAttacked = data.hasAttacked;
+        unit.hasMoved = data.hasMoved || false;
+        unit.turnsStationary = data.turnsStationary || 0;
         return unit;
     }
 }

@@ -67,7 +67,10 @@ class MapRenderer {
         // Layer 6: Fog of war overlay
         if (gameState.settings.fogOfWar) {
             cells.forEach(cell => {
-                this.fogRenderer.drawFog(cell);
+                // Use gameState visibility system
+                if (!gameState.isHexVisible(cell.hex)) {
+                    this.fogRenderer.drawFogOverlay(cell);
+                }
             });
         }
 
@@ -95,8 +98,8 @@ class MapRenderer {
             }
         }
 
-        // Layer 10: Units
-        this.unitRenderer.drawUnits(gameState.units);
+        // Layer 10: Units (visibility handled inside)
+        this.unitRenderer.drawUnits(gameState.units, gameState);
 
         // Layer 11: Selected unit highlight
         if (gameState.selectedUnit) {

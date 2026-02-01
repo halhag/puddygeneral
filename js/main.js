@@ -49,6 +49,9 @@ class Game {
         // Start auto-save
         this.startAutoSave();
 
+        // Initialize visibility for fog of war
+        this.gameState.updateVisibility();
+
         // Update highlights based on game phase
         this.updateHighlights();
 
@@ -159,6 +162,9 @@ class Game {
             console.log(`Placed ${unit.getName()} at (${hex.q}, ${hex.r})`);
             console.log(`Units remaining: ${this.gameState.unitsToPlace}`);
 
+            // Update visibility after placing unit
+            this.gameState.updateVisibility();
+
             if (this.gameState.phase === GamePhase.MOVEMENT) {
                 console.log('All units placed! Movement phase begins.');
                 console.log('Click on a unit to select it, then click on a highlighted hex to move.');
@@ -188,24 +194,30 @@ class Game {
             const isValidMove = validMoves.some(h => h.equals(hex));
 
             if (isValidMove) {
-                const moved = this.gameState.moveUnit(selectedUnit, hex);
-                if (moved) {
-                    console.log(`Moved ${selectedUnit.getName()} to (${hex.q}, ${hex.r})`);
-                    console.log(`Movement remaining: ${selectedUnit.movementRemaining}`);
+                const result = this.gameState.moveUnit(selectedUnit, hex);
+                if (result.success) {
+                    const actualHex = result.actualHex || hex;
+                    console.log(`Moved ${selectedUnit.getName()} to (${actualHex.q}, ${actualHex.r})`);
+
+                    // Check if battle was triggered
+                    if (result.battleTriggered) {
+                        this.showBattlePopup(selectedUnit, result.enemyUnit);
+                        // Unit cannot move further after battle
+                        this.gameState.deselectUnit();
+                        this.gameState.deselectHex();
+                        this.updateHighlights();
+                        return;
+                    }
 
                     // Check victory
                     if (this.gameState.phase === GamePhase.VICTORY) {
                         this.showVictory();
                     }
 
-                    // Keep unit selected if it can still move
-                    if (selectedUnit.canMove()) {
-                        this.updateHighlights();
-                    } else {
-                        this.gameState.deselectUnit();
-                        this.gameState.deselectHex();
-                        this.updateHighlights();
-                    }
+                    // Unit can only move once per turn (hasMoved flag is now set)
+                    this.gameState.deselectUnit();
+                    this.gameState.deselectHex();
+                    this.updateHighlights();
                 }
                 return;
             }
@@ -284,6 +296,141 @@ class Game {
             const okBtn = document.getElementById('victory-ok-btn');
             if (okBtn) {
                 okBtn.onclick = () => modal.classList.add('hidden');
+            }
+        }
+    }
+
+    /**
+     * Show battle popup and resolve combat
+     * @param {Unit} attacker - The attacking unit
+     * @param {Unit} defender - The defending unit
+     */
+    showBattlePopup(attacker, defender) {
+        // Capture entrenchment and experience before battle
+        const attackerEntrenchBefore = attacker.entrenchment;
+        const defenderEntrenchBefore = defender.entrenchment;
+        const attackerExpBefore = attacker.experience;
+        const defenderExpBefore = defender.experience;
+
+        // Resolve the battle using the battle resolver
+        const result = resolveBattle(attacker, defender);
+
+        // Apply damage to units
+        attacker.takeDamage(result.attackerDamage);
+        defender.takeDamage(result.defenderDamage);
+
+        // Apply experience gains for surviving units
+        // Formula: 0.1 + (5% of strength lost) with ±20% variance
+        let attackerExpGain = 0;
+        let defenderExpGain = 0;
+        if (!result.attackerDestroyed) {
+            attackerExpGain = attacker.gainExperience(result.attackerDamage);
+        }
+        if (!result.defenderDestroyed) {
+            defenderExpGain = defender.gainExperience(result.defenderDamage);
+        }
+
+        // Reduce defender entrenchment after being attacked
+        defender.reduceEntrenchment();
+
+        // Capture entrenchment after battle
+        const defenderEntrenchAfter = defender.entrenchment;
+
+        // Mark attacker as having attacked
+        attacker.performAttack();
+
+        // Log battle results
+        console.log('=================================');
+        console.log(`   BATTLE: ${attacker.getName()} vs ${defender.getName()}`);
+        console.log(`   Power: ${result.attackerPower} vs ${result.defenderPower} (ratio: ${result.powerRatio.toFixed(2)})`);
+        console.log(`   Entrenchment: ${attackerEntrenchBefore} vs ${defenderEntrenchBefore} -> ${defenderEntrenchAfter}`);
+        console.log(`   Experience: ${attackerExpBefore.toFixed(1)} (+${attackerExpGain.toFixed(2)}) vs ${defenderExpBefore.toFixed(1)} (+${defenderExpGain.toFixed(2)})`);
+        console.log(`   Raw Damage: Atk: ${result.attackerDamageRaw.toFixed(1)}, Def: ${result.defenderDamageRaw.toFixed(1)}`);
+        console.log(`   Result: ${result.attackerStrengthBefore} -> ${result.attackerStrengthAfter} vs ${result.defenderStrengthBefore} -> ${result.defenderStrengthAfter}`);
+        console.log('=================================');
+
+        // Store defender hex for castle capture check
+        const defenderHex = defender.hex;
+
+        // Show custom battle modal
+        const modal = document.getElementById('battle-modal');
+        if (modal) {
+            // Update attacker info
+            document.getElementById('battle-attacker-name').textContent = attacker.getName();
+            document.getElementById('battle-attacker-before').textContent = result.attackerStrengthBefore;
+            document.getElementById('battle-attacker-after').textContent = result.attackerStrengthAfter;
+            document.getElementById('battle-attacker-damage').textContent =
+                result.attackerDamage > 0 ? `-${result.attackerDamage}` : '0';
+
+            // Update defender info
+            document.getElementById('battle-defender-name').textContent = defender.getName();
+            document.getElementById('battle-defender-before').textContent = result.defenderStrengthBefore;
+            document.getElementById('battle-defender-after').textContent = result.defenderStrengthAfter;
+            document.getElementById('battle-defender-damage').textContent =
+                result.defenderDamage > 0 ? `-${result.defenderDamage}` : '0';
+
+            // Update status message
+            let status = '';
+            if (result.attackerDestroyed && result.defenderDestroyed) {
+                status = 'Mutual destruction!';
+            } else if (result.attackerDestroyed) {
+                status = `${attacker.getName()} destroyed!`;
+            } else if (result.defenderDestroyed) {
+                status = `${defender.getName()} destroyed!`;
+            } else {
+                status = 'Both units survive.';
+            }
+            document.getElementById('battle-status').textContent = status;
+
+            // Apply destroyed styling
+            const attackerAfter = document.getElementById('battle-attacker-after');
+            const defenderAfter = document.getElementById('battle-defender-after');
+            attackerAfter.classList.toggle('unit-destroyed', result.attackerDestroyed);
+            defenderAfter.classList.toggle('unit-destroyed', result.defenderDestroyed);
+
+            // Update battle details (dev/debug info)
+            document.getElementById('battle-power-info').textContent =
+                `${result.attackerPower} vs ${result.defenderPower} (ratio: ${result.powerRatio.toFixed(2)})`;
+            document.getElementById('battle-entrench-info').textContent =
+                `${attackerEntrenchBefore} vs ${defenderEntrenchBefore} → ${defenderEntrenchAfter}`;
+            // Show experience before → after with gain
+            const atkExpStr = result.attackerDestroyed ? attackerExpBefore.toFixed(1) :
+                `${attackerExpBefore.toFixed(1)} → ${attacker.experience.toFixed(1)} (+${attackerExpGain.toFixed(2)})`;
+            const defExpStr = result.defenderDestroyed ? defenderExpBefore.toFixed(1) :
+                `${defenderExpBefore.toFixed(1)} → ${defender.experience.toFixed(1)} (+${defenderExpGain.toFixed(2)})`;
+            document.getElementById('battle-exp-info').textContent =
+                `${atkExpStr} vs ${defExpStr}`;
+            const attackerInit = attacker.getType().initiative;
+            document.getElementById('battle-init-info').textContent =
+                `+${attackerInit} (attacker only)`;
+            document.getElementById('battle-raw-damage').textContent =
+                `Atk: ${result.attackerDamageRaw.toFixed(1)}, Def: ${result.defenderDamageRaw.toFixed(1)}`;
+
+            modal.classList.remove('hidden');
+
+            const okBtn = document.getElementById('battle-ok-btn');
+            if (okBtn) {
+                okBtn.onclick = () => {
+                    modal.classList.add('hidden');
+
+                    // Remove destroyed units
+                    this.gameState.units.removeDestroyed();
+
+                    // Check castle capture if defender was destroyed
+                    if (result.defenderDestroyed) {
+                        this.gameState.checkCastleCapture(defenderHex);
+
+                        // Check victory
+                        if (this.gameState.phase === GamePhase.VICTORY) {
+                            this.showVictory();
+                        }
+                    }
+
+                    // Update visibility after battle
+                    this.gameState.updateVisibility();
+
+                    this.render();
+                };
             }
         }
     }
@@ -421,6 +568,7 @@ class Game {
     newGame(name = 'Medieval Conquest') {
         this.gameState = GameState.create(name);
         GameStorage.saveGame(this.gameState);
+        this.gameState.updateVisibility();
         this.updateHighlights();
         this.render();
         this.logGameState();

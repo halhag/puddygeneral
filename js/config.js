@@ -20,9 +20,9 @@ const CONFIG = {
     SELECTION_LINE_WIDTH: 3,
     HOVER_COLOR: 'rgba(255, 255, 255, 0.2)',
 
-    // Fog of war
-    FOG_HIDDEN_COLOR: 'rgba(10, 10, 30, 0.85)',
-    FOG_EXPLORED_COLOR: 'rgba(20, 20, 50, 0.5)',
+    // Fog of war (lighter overlay - terrain visible like a map, but units hidden)
+    FOG_HIDDEN_COLOR: 'rgba(20, 20, 40, 0.45)',
+    FOG_EXPLORED_COLOR: 'rgba(20, 20, 50, 0.3)',
 
     // Autosave
     AUTOSAVE_INTERVAL_MS: 30000,
