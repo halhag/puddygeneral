@@ -57,6 +57,14 @@ class GameState {
         // Place enemy units in the 3 enemy castles (left side of map)
         state.placeEnemyUnits();
 
+        // Place a player trebuchet for testing ranged attacks
+        // Position on right side of map (q=17, vRow=7)
+        const playerTrebuchetPos = { q: 17, vRow: 7 };
+        const playerTrebuchetR = playerTrebuchetPos.vRow - Math.floor(playerTrebuchetPos.q / 2);
+        const playerTrebuchetHex = new Hex(playerTrebuchetPos.q, playerTrebuchetR);
+        const playerTrebuchet = new Unit('trebuchet', 0, playerTrebuchetHex);
+        state.units.addUnit(playerTrebuchet);
+
         return state;
     }
 
@@ -72,9 +80,25 @@ class GameState {
             { q: 3, vRow: 13 }      // Bottom-left castle
         ];
 
+        // Add an enemy near the river for testing river attacks
+        // Position q=6, vRow=8 is adjacent to river at q=7, vRow=8
+        const riverTestPos = { q: 6, vRow: 8 };
+        const riverTestR = riverTestPos.vRow - Math.floor(riverTestPos.q / 2);
+        const riverTestHex = new Hex(riverTestPos.q, riverTestR);
+        const riverTestUnit = new Unit('infantry', 1, riverTestHex);
+        this.units.addUnit(riverTestUnit);
+
+        // Add enemy trebuchet near center castle for testing defensive fire
+        // Position adjacent to center castle (q=11, vRow=7)
+        const trebuchetPos = { q: 11, vRow: 7 };
+        const trebuchetR = trebuchetPos.vRow - Math.floor(trebuchetPos.q / 2);
+        const trebuchetHex = new Hex(trebuchetPos.q, trebuchetR);
+        const trebuchetUnit = new Unit('trebuchet', 1, trebuchetHex);
+        this.units.addUnit(trebuchetUnit);
+
         for (const pos of enemyCastles) {
-            // Convert visual row to axial r: r = vRow - q/2
-            const r = pos.vRow - pos.q / 2;
+            // Convert visual row to axial r: r = vRow - floor(q/2)
+            const r = pos.vRow - Math.floor(pos.q / 2);
             const hex = new Hex(pos.q, r);
 
             // Create enemy infantry (player 1 = enemy/red)
@@ -414,6 +438,10 @@ class GameState {
         // This is the ONLY way battle is triggered - clicking on enemy's hex
         const enemyAtTarget = this.units.getUnitAt(targetHex);
         if (enemyAtTarget && enemyAtTarget.playerId !== this.currentPlayer) {
+            // Check if enemy was visible BEFORE we move (for surprise attack detection)
+            // If enemy hex was not visible to any of our units, it's a surprise attack
+            const enemyWasVisible = this.isHexVisible(targetHex);
+
             // Player clicked on enemy's hex = attack intent
             // Unit stops adjacent to enemy, then battle commences
             const stopHex = this.findStopHexBeforeEnemy(unit, targetHex);
@@ -423,11 +451,25 @@ class GameState {
                 unit.useMovement(moveCost, stopHex);
                 this.updateVisibility();
 
+                // Check for river attack penalty
+                // Attacker on river attacking someone NOT on river = disadvantage
+                const attackerCell = this.map.getCell(stopHex);
+                const defenderCell = this.map.getCell(targetHex);
+                const attackerOnRiver = attackerCell && attackerCell.terrain === TerrainType.RIVER;
+                const defenderOnRiver = defenderCell && defenderCell.terrain === TerrainType.RIVER;
+                const riverAttack = attackerOnRiver && !defenderOnRiver;
+
+                // Get defender terrain for close defense calculation
+                const defenderTerrain = defenderCell ? defenderCell.terrain : TerrainType.GRASS;
+
                 return {
                     success: true,
                     battleTriggered: true,
                     enemyUnit: enemyAtTarget,
-                    actualHex: stopHex
+                    actualHex: stopHex,
+                    surpriseAttack: !enemyWasVisible,
+                    riverAttack: riverAttack,
+                    defenderTerrain: defenderTerrain
                 };
             } else {
                 // Can't find a valid stop hex (shouldn't happen normally)
@@ -578,6 +620,133 @@ class GameState {
             }
         }
         return false;
+    }
+
+    // ==================== RANGED ATTACK ====================
+
+    /**
+     * Check if a unit can perform a ranged attack
+     * Requires: range > 0, has ammo, hasn't moved, hasn't attacked
+     * @param {Unit} unit - The unit to check
+     * @returns {boolean}
+     */
+    canRangedAttack(unit) {
+        if (!unit) return false;
+        const unitType = unit.getType();
+        return unitType.range > 0 &&
+               !unit.hasMoved &&
+               unit.hasAmmo() &&
+               !unit.hasAttacked;
+    }
+
+    /**
+     * Get valid ranged attack targets for a unit
+     * Returns enemy hexes within unit's range that are visible
+     * @param {Unit} unit - The ranged unit
+     * @returns {Array<Hex>} Array of valid target hexes
+     */
+    getValidRangedTargets(unit) {
+        if (!this.canRangedAttack(unit)) return [];
+
+        const unitType = unit.getType();
+        const range = unitType.range;
+        const targets = [];
+
+        // Get all hexes within range
+        const hexesInRange = this.getHexesInRange(unit.hex, range);
+
+        for (const hex of hexesInRange) {
+            // Skip own hex
+            if (hex.equals(unit.hex)) continue;
+
+            // Must be visible
+            if (!this.isHexVisible(hex)) continue;
+
+            // Must have enemy unit
+            const targetUnit = this.units.getUnitAt(hex);
+            if (targetUnit && targetUnit.playerId !== this.currentPlayer) {
+                targets.push(hex);
+            }
+        }
+
+        return targets;
+    }
+
+    /**
+     * Perform a ranged attack
+     * @param {Unit} attacker - The attacking ranged unit
+     * @param {Unit} defender - The defending unit
+     * @returns {Object} Result with defender terrain info
+     */
+    executeRangedAttack(attacker, defender) {
+        if (!this.canRangedAttack(attacker)) {
+            return { success: false };
+        }
+
+        const defenderCell = this.map.getCell(defender.hex);
+        const defenderTerrain = defenderCell ? defenderCell.terrain : TerrainType.GRASS;
+
+        // Mark unit as having attacked (uses all movement and ammo)
+        attacker.performAttack();
+
+        return {
+            success: true,
+            defenderTerrain: defenderTerrain
+        };
+    }
+
+    // ==================== DEFENSIVE FIRE ====================
+
+    /**
+     * Get enemy artillery units that can provide defensive fire
+     * These are enemy ranged units adjacent to the defender (in defender's ZoC)
+     * @param {Hex} defenderHex - The hex being defended
+     * @returns {Array<Unit>} Array of enemy artillery units that will fire
+     */
+    getDefensiveArtillery(defenderHex) {
+        const artillery = [];
+
+        // Check all hexes adjacent to defender
+        for (let dir = 0; dir < 6; dir++) {
+            const adjacentHex = defenderHex.neighbor(dir);
+            const unit = this.units.getUnitAt(adjacentHex);
+
+            // Must be enemy unit with range > 0 and ammo
+            if (unit &&
+                unit.playerId !== this.currentPlayer &&
+                unit.getType().range > 0 &&
+                unit.hasAmmo()) {
+                artillery.push(unit);
+            }
+        }
+
+        return artillery;
+    }
+
+    /**
+     * Execute defensive fire from artillery
+     * Artillery fires at attacker, using ammo but taking no damage
+     * @param {Unit} artillery - The artillery unit providing defensive fire
+     * @param {Unit} attacker - The attacking unit being fired upon
+     * @returns {Object} Result with terrain info
+     */
+    executeDefensiveFire(artillery, attacker) {
+        if (!artillery.hasAmmo()) {
+            return { success: false };
+        }
+
+        const attackerCell = this.map.getCell(attacker.hex);
+        const attackerTerrain = attackerCell ? attackerCell.terrain : TerrainType.GRASS;
+
+        // Use 1 ammo (but don't mark as attacked - defensive fire is free action)
+        if (artillery.ammo !== null) {
+            artillery.ammo--;
+        }
+
+        return {
+            success: true,
+            defenderTerrain: attackerTerrain  // Attacker is the "defender" of defensive fire
+        };
     }
 
     // ==================== FOG OF WAR ====================

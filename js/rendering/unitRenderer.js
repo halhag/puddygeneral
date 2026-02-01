@@ -53,6 +53,9 @@ class UnitRenderer {
             case UnitClass.INFANTRY:
                 this.drawInfantry(center, size, colors, unit);
                 break;
+            case UnitClass.SIEGE:
+                this.drawSiege(center, size, colors, unit);
+                break;
             default:
                 this.drawGenericUnit(center, size, colors, unit);
         }
@@ -97,6 +100,40 @@ class UnitRenderer {
         this.ctx.moveTo(center.x - s * 0.3, center.y - s * 0.1);
         this.ctx.lineTo(center.x + s * 0.3, center.y - s * 0.1);
         this.ctx.stroke();
+    }
+
+    /**
+     * Draw siege unit (trebuchet icon)
+     */
+    drawSiege(center, size, colors, unit) {
+        const s = size * 0.4;
+
+        // Draw base/platform
+        this.ctx.fillStyle = colors.dark;
+        this.ctx.fillRect(center.x - s * 0.6, center.y + s * 0.2, s * 1.2, s * 0.3);
+
+        // Draw throwing arm
+        this.ctx.strokeStyle = colors.main;
+        this.ctx.lineWidth = 4;
+        this.ctx.beginPath();
+        this.ctx.moveTo(center.x - s * 0.1, center.y + s * 0.2);
+        this.ctx.lineTo(center.x - s * 0.4, center.y - s * 0.5);
+        this.ctx.stroke();
+
+        // Draw counterweight
+        this.ctx.fillStyle = colors.main;
+        this.ctx.beginPath();
+        this.ctx.arc(center.x + s * 0.2, center.y + s * 0.1, s * 0.25, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.strokeStyle = colors.dark;
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+
+        // Draw projectile (small circle at end of arm)
+        this.ctx.fillStyle = colors.light;
+        this.ctx.beginPath();
+        this.ctx.arc(center.x - s * 0.4, center.y - s * 0.5, s * 0.15, 0, Math.PI * 2);
+        this.ctx.fill();
     }
 
     /**
@@ -223,6 +260,45 @@ class UnitRenderer {
             // Blue border
             this.ctx.strokeStyle = 'rgba(100, 150, 255, 0.6)';
             this.ctx.lineWidth = 2;
+            this.ctx.stroke();
+        }
+    }
+
+    /**
+     * Draw highlight on hexes that can be targeted by ranged attack
+     * @param {Array<Hex>} hexes - Array of targetable hexes
+     */
+    drawRangedTargetHighlights(hexes) {
+        for (const hex of hexes) {
+            const corners = this.layout.hexCorners(hex);
+
+            // Semi-transparent orange/red fill (different from movement)
+            this.ctx.fillStyle = 'rgba(255, 120, 50, 0.35)';
+            this.ctx.beginPath();
+            this.ctx.moveTo(corners[0].x, corners[0].y);
+            for (let i = 1; i < 6; i++) {
+                this.ctx.lineTo(corners[i].x, corners[i].y);
+            }
+            this.ctx.closePath();
+            this.ctx.fill();
+
+            // Orange border
+            this.ctx.strokeStyle = 'rgba(255, 120, 50, 0.8)';
+            this.ctx.lineWidth = 2;
+            this.ctx.stroke();
+
+            // Draw crosshair icon to indicate ranged target
+            const center = this.layout.hexToPixel(hex);
+            const s = this.layout.size * 0.2;
+            this.ctx.strokeStyle = 'rgba(255, 120, 50, 0.9)';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            // Horizontal line
+            this.ctx.moveTo(center.x - s, center.y);
+            this.ctx.lineTo(center.x + s, center.y);
+            // Vertical line
+            this.ctx.moveTo(center.x, center.y - s);
+            this.ctx.lineTo(center.x, center.y + s);
             this.ctx.stroke();
         }
     }

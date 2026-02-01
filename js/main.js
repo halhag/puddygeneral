@@ -30,6 +30,9 @@ class Game {
         // Auto-save timer
         this.autoSaveTimer = null;
 
+        // Inspection mode
+        this.inspectMode = false;
+
         // Initialize
         this.init();
     }
@@ -116,6 +119,22 @@ class Game {
                 }
             });
         }
+
+        // Inspect button
+        const inspectBtn = document.getElementById('inspect-btn');
+        if (inspectBtn) {
+            inspectBtn.addEventListener('click', () => {
+                this.toggleInspectMode();
+            });
+        }
+
+        // Inspect modal close button
+        const inspectOkBtn = document.getElementById('inspect-ok-btn');
+        if (inspectOkBtn) {
+            inspectOkBtn.addEventListener('click', () => {
+                this.hideInspectModal();
+            });
+        }
     }
 
     handleMouseMove(event) {
@@ -139,6 +158,17 @@ class Game {
         const hex = this.renderer.getHexAtPoint(point);
 
         if (!this.gameState.map.hasCell(hex)) return;
+
+        // Handle inspection mode
+        if (this.inspectMode) {
+            const unit = this.gameState.getUnitAt(hex);
+            if (unit) {
+                this.showInspectModal(unit);
+            }
+            // Exit inspect mode after clicking
+            this.toggleInspectMode();
+            return;
+        }
 
         switch (this.gameState.phase) {
             case GamePhase.PLACEMENT:
@@ -189,6 +219,25 @@ class Game {
                 return;
             }
 
+            // Check if clicking on a valid ranged target
+            if (this.gameState.canRangedAttack(selectedUnit)) {
+                const rangedTargets = this.gameState.getValidRangedTargets(selectedUnit);
+                const isRangedTarget = rangedTargets.some(h => h.equals(hex));
+
+                if (isRangedTarget && clickedUnit) {
+                    // Execute ranged attack
+                    const result = this.gameState.executeRangedAttack(selectedUnit, clickedUnit);
+                    if (result.success) {
+                        console.log(`${selectedUnit.getName()} fires at ${clickedUnit.getName()}!`);
+                        this.showRangedBattlePopup(selectedUnit, clickedUnit, result.defenderTerrain);
+                        this.gameState.deselectUnit();
+                        this.gameState.deselectHex();
+                        this.updateHighlights();
+                        return;
+                    }
+                }
+            }
+
             // If clicking on a valid movement hex, move there
             const validMoves = this.gameState.getValidMovementHexes(selectedUnit);
             const isValidMove = validMoves.some(h => h.equals(hex));
@@ -201,7 +250,15 @@ class Game {
 
                     // Check if battle was triggered
                     if (result.battleTriggered) {
-                        this.showBattlePopup(selectedUnit, result.enemyUnit);
+                        // Check for defensive artillery fire
+                        const defensiveArtillery = this.gameState.getDefensiveArtillery(result.enemyUnit.hex);
+                        if (defensiveArtillery.length > 0) {
+                            // Show defensive fire sequence, then main battle
+                            this.showDefensiveFireSequence(selectedUnit, result.enemyUnit, defensiveArtillery, result);
+                        } else {
+                            // No defensive fire, show main battle
+                            this.showBattlePopup(selectedUnit, result.enemyUnit, result.surpriseAttack, result.riverAttack, result.defenderTerrain);
+                        }
                         // Unit cannot move further after battle
                         this.gameState.deselectUnit();
                         this.gameState.deselectHex();
@@ -256,8 +313,15 @@ class Game {
             case GamePhase.MOVEMENT:
                 if (this.gameState.selectedUnit) {
                     const unit = this.gameState.units.getUnit(this.gameState.selectedUnit);
-                    if (unit && unit.canMove()) {
-                        this.renderer.setMovementHighlights(this.gameState.getValidMovementHexes(unit));
+                    if (unit) {
+                        // Show movement highlights if unit can move
+                        if (unit.canMove()) {
+                            this.renderer.setMovementHighlights(this.gameState.getValidMovementHexes(unit));
+                        }
+                        // Show ranged target highlights if unit can do ranged attack
+                        if (this.gameState.canRangedAttack(unit)) {
+                            this.renderer.setRangedTargetHighlights(this.gameState.getValidRangedTargets(unit));
+                        }
                     }
                 }
                 break;
@@ -301,19 +365,96 @@ class Game {
     }
 
     /**
+     * Toggle inspection mode
+     */
+    toggleInspectMode() {
+        this.inspectMode = !this.inspectMode;
+        const inspectBtn = document.getElementById('inspect-btn');
+        if (inspectBtn) {
+            inspectBtn.classList.toggle('active', this.inspectMode);
+        }
+        console.log(`Inspect mode: ${this.inspectMode ? 'ON' : 'OFF'}`);
+    }
+
+    /**
+     * Show the unit inspection modal with details
+     * @param {Unit} unit - The unit to inspect
+     */
+    showInspectModal(unit) {
+        const modal = document.getElementById('inspect-modal');
+        if (!modal) return;
+
+        const unitType = unit.getType();
+
+        // Populate unit name
+        document.getElementById('inspect-unit-name').textContent = unitType.name;
+
+        // Status section
+        document.getElementById('inspect-strength').textContent = `${unit.strength}/10`;
+        document.getElementById('inspect-movement').textContent = `${unit.movementRemaining}/${unitType.movement}`;
+        document.getElementById('inspect-ammo').textContent =
+            unit.ammo === null ? 'Unlimited' : `${unit.ammo}/${unitType.maxAmmo}`;
+        document.getElementById('inspect-experience').textContent = unit.experience.toFixed(2);
+        document.getElementById('inspect-entrenchment').textContent = unit.entrenchment;
+
+        // Combat stats section
+        document.getElementById('inspect-soft-attack').textContent = unitType.softAttack;
+        document.getElementById('inspect-hard-attack').textContent = unitType.hardAttack;
+        document.getElementById('inspect-ground-defense').textContent = unitType.groundDefense;
+        document.getElementById('inspect-close-defense').textContent = unitType.closeDefense;
+        document.getElementById('inspect-initiative').textContent = unitType.initiative;
+
+        // Other section
+        document.getElementById('inspect-spotting').textContent = unitType.spotting;
+        document.getElementById('inspect-range').textContent =
+            unitType.range === 0 ? 'Melee' : unitType.range;
+        document.getElementById('inspect-target-type').textContent =
+            unitType.targetType === 'hard' ? 'Hard' : 'Soft';
+
+        // Description
+        document.getElementById('inspect-description').textContent = unitType.description;
+
+        modal.classList.remove('hidden');
+    }
+
+    /**
+     * Hide the unit inspection modal
+     */
+    hideInspectModal() {
+        const modal = document.getElementById('inspect-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+
+    /**
      * Show battle popup and resolve combat
      * @param {Unit} attacker - The attacking unit
      * @param {Unit} defender - The defending unit
+     * @param {boolean} surpriseAttack - Whether attacker stumbled into hidden enemy
+     * @param {boolean} riverAttack - Whether attacker is on river attacking non-river
+     * @param {string} defenderTerrain - The terrain type the defender is on
      */
-    showBattlePopup(attacker, defender) {
+    showBattlePopup(attacker, defender, surpriseAttack = false, riverAttack = false, defenderTerrain = TerrainType.GRASS) {
         // Capture entrenchment and experience before battle
         const attackerEntrenchBefore = attacker.entrenchment;
         const defenderEntrenchBefore = defender.entrenchment;
         const attackerExpBefore = attacker.experience;
         const defenderExpBefore = defender.experience;
 
+        // Capture fatigue info before performAttack() resets movementRemaining
+        const attackerType = attacker.getType();
+        const maxMovement = attackerType.movement;
+        const movementUsed = maxMovement - attacker.movementRemaining;
+        const percentUsed = maxMovement > 0 ? movementUsed / maxMovement : 0;
+        const fatigueTiers = Math.min(2, Math.floor(percentUsed / 0.33));
+        const penaltyPercent = fatigueTiers * 20;
+
+        // Determine if defender is in close terrain (uses closeDefense)
+        const closeTerrain = isCloseTerrain(defenderTerrain);
+
         // Resolve the battle using the battle resolver
-        const result = resolveBattle(attacker, defender);
+        const result = resolveBattle(attacker, defender, { surpriseAttack, riverAttack, closeTerrain });
 
         // Apply damage to units
         attacker.takeDamage(result.attackerDamage);
@@ -390,7 +531,14 @@ class Game {
 
             // Update battle details (dev/debug info)
             document.getElementById('battle-power-info').textContent =
-                `${result.attackerPower} vs ${result.defenderPower} (ratio: ${result.powerRatio.toFixed(2)})`;
+                `${result.attackerPower.toFixed(1)} vs ${result.defenderPower.toFixed(1)} (ratio: ${result.powerRatio.toFixed(2)})`;
+            // Display terrain type and which defense was used
+            const terrainName = getTerrainProperties(defenderTerrain).name;
+            const defenseType = closeTerrain ? 'Close' : 'Ground';
+            const defenderType = defender.getType();
+            const defenseValue = closeTerrain ? defenderType.closeDefense : defenderType.groundDefense;
+            document.getElementById('battle-terrain-info').textContent =
+                `${terrainName} (${defenseType} Def: ${defenseValue})`;
             document.getElementById('battle-entrench-info').textContent =
                 `${attackerEntrenchBefore} vs ${defenderEntrenchBefore} → ${defenderEntrenchAfter}`;
             // Show experience before → after with gain
@@ -400,9 +548,29 @@ class Game {
                 `${defenderExpBefore.toFixed(1)} → ${defender.experience.toFixed(1)} (+${defenderExpGain.toFixed(2)})`;
             document.getElementById('battle-exp-info').textContent =
                 `${atkExpStr} vs ${defExpStr}`;
-            const attackerInit = attacker.getType().initiative;
+            // Display initiative (0 if surprised)
+            const baseInit = attacker.getType().initiative;
+            // Display initiative (0 if surprised or river attack)
+            const lostInitiative = surpriseAttack || riverAttack;
+            let initReason = '';
+            if (surpriseAttack && riverAttack) initReason = 'surprised + river';
+            else if (surpriseAttack) initReason = 'surprised';
+            else if (riverAttack) initReason = 'river';
             document.getElementById('battle-init-info').textContent =
-                `+${attackerInit} (attacker only)`;
+                lostInitiative ? `0 (${initReason}, was +${baseInit})` : `+${baseInit} (attacker only)`;
+
+            // Display fatigue (calculated at start of function before performAttack)
+            document.getElementById('battle-fatigue-info').textContent =
+                fatigueTiers > 0 ? `${fatigueTiers} tier(s) (-${penaltyPercent}% str)` : 'None';
+
+            // Display surprise attack status
+            document.getElementById('battle-surprise-info').textContent =
+                surpriseAttack ? 'Yes (-20% str, no init)' : 'No';
+
+            // Display river attack status
+            document.getElementById('battle-river-info').textContent =
+                riverAttack ? 'Yes (-30% str, no init)' : 'No';
+
             document.getElementById('battle-raw-damage').textContent =
                 `Atk: ${result.attackerDamageRaw.toFixed(1)}, Def: ${result.defenderDamageRaw.toFixed(1)}`;
 
@@ -430,6 +598,237 @@ class Game {
                     this.gameState.updateVisibility();
 
                     this.render();
+                };
+            }
+        }
+    }
+
+    /**
+     * Show ranged battle popup (attacker takes no damage)
+     * @param {Unit} attacker - The ranged attacking unit
+     * @param {Unit} defender - The defending unit
+     * @param {string} defenderTerrain - The terrain the defender is on
+     */
+    showRangedBattlePopup(attacker, defender, defenderTerrain = TerrainType.GRASS) {
+        // Capture values before battle
+        const attackerExpBefore = attacker.experience;
+        const defenderExpBefore = defender.experience;
+        const defenderEntrenchBefore = defender.entrenchment;
+
+        // Determine if defender is in close terrain
+        const closeTerrain = isCloseTerrain(defenderTerrain);
+
+        // Resolve battle with rangedAttack flag (attacker takes no damage)
+        const result = resolveBattle(attacker, defender, { closeTerrain, rangedAttack: true });
+
+        // Apply damage (only defender takes damage in ranged attack)
+        defender.takeDamage(result.defenderDamage);
+
+        // Experience gains
+        let attackerExpGain = 0;
+        let defenderExpGain = 0;
+        if (!result.attackerDestroyed) {
+            attackerExpGain = attacker.gainExperience(0); // No damage taken
+        }
+        if (!result.defenderDestroyed) {
+            defenderExpGain = defender.gainExperience(result.defenderDamage);
+        }
+
+        // Reduce defender entrenchment
+        defender.reduceEntrenchment();
+        const defenderEntrenchAfter = defender.entrenchment;
+
+        // Store defender hex for castle capture check
+        const defenderHex = defender.hex;
+
+        // Log
+        console.log('=================================');
+        console.log(`   RANGED ATTACK: ${attacker.getName()} fires at ${defender.getName()}`);
+        console.log(`   Power: ${result.attackerPower.toFixed(1)} vs ${result.defenderPower.toFixed(1)}`);
+        console.log(`   Defender takes ${result.defenderDamage} damage (${result.defenderStrengthBefore} -> ${result.defenderStrengthAfter})`);
+        console.log('=================================');
+
+        // Show battle modal
+        const modal = document.getElementById('battle-modal');
+        if (modal) {
+            document.getElementById('battle-attacker-name').textContent = attacker.getName() + ' (Ranged)';
+            document.getElementById('battle-attacker-before').textContent = result.attackerStrengthBefore;
+            document.getElementById('battle-attacker-after').textContent = result.attackerStrengthAfter;
+            document.getElementById('battle-attacker-damage').textContent = '0';
+
+            document.getElementById('battle-defender-name').textContent = defender.getName();
+            document.getElementById('battle-defender-before').textContent = result.defenderStrengthBefore;
+            document.getElementById('battle-defender-after').textContent = result.defenderStrengthAfter;
+            document.getElementById('battle-defender-damage').textContent =
+                result.defenderDamage > 0 ? `-${result.defenderDamage}` : '0';
+
+            let status = result.defenderDestroyed ? `${defender.getName()} destroyed!` : 'Target survives.';
+            document.getElementById('battle-status').textContent = status;
+
+            const attackerAfter = document.getElementById('battle-attacker-after');
+            const defenderAfter = document.getElementById('battle-defender-after');
+            attackerAfter.classList.toggle('unit-destroyed', false);
+            defenderAfter.classList.toggle('unit-destroyed', result.defenderDestroyed);
+
+            // Update details
+            document.getElementById('battle-power-info').textContent =
+                `${result.attackerPower.toFixed(1)} vs ${result.defenderPower.toFixed(1)} (ratio: ${result.powerRatio.toFixed(2)})`;
+            const terrainName = getTerrainProperties(defenderTerrain).name;
+            const defenseType = closeTerrain ? 'Close' : 'Ground';
+            const defenderType = defender.getType();
+            const defenseValue = closeTerrain ? defenderType.closeDefense : defenderType.groundDefense;
+            document.getElementById('battle-terrain-info').textContent =
+                `${terrainName} (${defenseType} Def: ${defenseValue})`;
+            document.getElementById('battle-entrench-info').textContent =
+                `0 vs ${defenderEntrenchBefore} → ${defenderEntrenchAfter}`;
+            const atkExpStr = `${attackerExpBefore.toFixed(1)} → ${attacker.experience.toFixed(1)} (+${attackerExpGain.toFixed(2)})`;
+            const defExpStr = result.defenderDestroyed ? defenderExpBefore.toFixed(1) :
+                `${defenderExpBefore.toFixed(1)} → ${defender.experience.toFixed(1)} (+${defenderExpGain.toFixed(2)})`;
+            document.getElementById('battle-exp-info').textContent = `${atkExpStr} vs ${defExpStr}`;
+            document.getElementById('battle-init-info').textContent = `+${attacker.getType().initiative} (ranged)`;
+            document.getElementById('battle-fatigue-info').textContent = 'N/A (ranged)';
+            document.getElementById('battle-surprise-info').textContent = 'No';
+            document.getElementById('battle-river-info').textContent = 'No';
+            document.getElementById('battle-raw-damage').textContent =
+                `Atk: 0 (ranged), Def: ${result.defenderDamageRaw.toFixed(1)}`;
+
+            modal.classList.remove('hidden');
+
+            const okBtn = document.getElementById('battle-ok-btn');
+            if (okBtn) {
+                okBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                    this.gameState.units.removeDestroyed();
+
+                    if (result.defenderDestroyed) {
+                        this.gameState.checkCastleCapture(defenderHex);
+                        if (this.gameState.phase === GamePhase.VICTORY) {
+                            this.showVictory();
+                        }
+                    }
+
+                    this.gameState.updateVisibility();
+                    this.render();
+                };
+            }
+        }
+    }
+
+    /**
+     * Show defensive fire sequence before main battle
+     * @param {Unit} attacker - The attacking unit
+     * @param {Unit} defender - The defending unit
+     * @param {Array<Unit>} artillery - Array of enemy artillery that will fire
+     * @param {Object} battleResult - The original battle trigger result
+     */
+    showDefensiveFireSequence(attacker, defender, artillery, battleResult) {
+        // Process defensive fire from each artillery unit
+        let artilleryIndex = 0;
+
+        const processNextArtillery = () => {
+            if (artilleryIndex >= artillery.length || attacker.isDestroyed()) {
+                // All defensive fire done, now show main battle if attacker survived
+                if (!attacker.isDestroyed()) {
+                    this.showBattlePopup(attacker, defender, battleResult.surpriseAttack, battleResult.riverAttack, battleResult.defenderTerrain);
+                } else {
+                    // Attacker destroyed by defensive fire
+                    this.gameState.units.removeDestroyed();
+                    this.gameState.updateVisibility();
+                    this.render();
+                }
+                return;
+            }
+
+            const art = artillery[artilleryIndex];
+            artilleryIndex++;
+
+            // Execute defensive fire
+            const fireResult = this.gameState.executeDefensiveFire(art, attacker);
+            if (fireResult.success) {
+                this.showDefensiveFirePopup(art, attacker, fireResult.defenderTerrain, processNextArtillery);
+            } else {
+                // Artillery couldn't fire, move to next
+                processNextArtillery();
+            }
+        };
+
+        processNextArtillery();
+    }
+
+    /**
+     * Show defensive fire popup (artillery firing at attacker)
+     * @param {Unit} artillery - The artillery unit firing
+     * @param {Unit} target - The unit being fired upon (the original attacker)
+     * @param {string} targetTerrain - The terrain the target is on
+     * @param {Function} onClose - Callback when popup is closed
+     */
+    showDefensiveFirePopup(artillery, target, targetTerrain, onClose) {
+        const closeTerrain = isCloseTerrain(targetTerrain);
+        const targetExpBefore = target.experience;
+        const targetEntrenchBefore = target.entrenchment;
+
+        // Resolve battle (ranged attack - artillery takes no damage)
+        const result = resolveBattle(artillery, target, { closeTerrain, rangedAttack: true });
+
+        // Apply damage to target
+        target.takeDamage(result.defenderDamage);
+
+        // Experience for target if it survives
+        if (!result.defenderDestroyed) {
+            target.gainExperience(result.defenderDamage);
+        }
+
+        // Reduce entrenchment
+        target.reduceEntrenchment();
+
+        console.log(`   DEFENSIVE FIRE: ${artillery.getName()} hits ${target.getName()} for ${result.defenderDamage}`);
+
+        // Show simplified popup for defensive fire
+        const modal = document.getElementById('battle-modal');
+        if (modal) {
+            document.getElementById('battle-attacker-name').textContent = artillery.getName() + ' (Def Fire)';
+            document.getElementById('battle-attacker-before').textContent = artillery.strength;
+            document.getElementById('battle-attacker-after').textContent = artillery.strength;
+            document.getElementById('battle-attacker-damage').textContent = '0';
+
+            document.getElementById('battle-defender-name').textContent = target.getName();
+            document.getElementById('battle-defender-before').textContent = result.defenderStrengthBefore;
+            document.getElementById('battle-defender-after').textContent = result.defenderStrengthAfter;
+            document.getElementById('battle-defender-damage').textContent =
+                result.defenderDamage > 0 ? `-${result.defenderDamage}` : '0';
+
+            let status = result.defenderDestroyed ?
+                `${target.getName()} destroyed by defensive fire!` :
+                `Defensive fire hits for ${result.defenderDamage}`;
+            document.getElementById('battle-status').textContent = status;
+
+            const attackerAfter = document.getElementById('battle-attacker-after');
+            const defenderAfter = document.getElementById('battle-defender-after');
+            attackerAfter.classList.toggle('unit-destroyed', false);
+            defenderAfter.classList.toggle('unit-destroyed', result.defenderDestroyed);
+
+            // Simplified details for defensive fire
+            document.getElementById('battle-power-info').textContent =
+                `${result.attackerPower.toFixed(1)} vs ${result.defenderPower.toFixed(1)}`;
+            document.getElementById('battle-terrain-info').textContent = 'Defensive Fire';
+            document.getElementById('battle-entrench-info').textContent = `${targetEntrenchBefore}`;
+            document.getElementById('battle-exp-info').textContent = '-';
+            document.getElementById('battle-init-info').textContent = '-';
+            document.getElementById('battle-fatigue-info').textContent = '-';
+            document.getElementById('battle-surprise-info').textContent = '-';
+            document.getElementById('battle-river-info').textContent = '-';
+            document.getElementById('battle-raw-damage').textContent = `Def: ${result.defenderDamageRaw.toFixed(1)}`;
+
+            modal.classList.remove('hidden');
+
+            const okBtn = document.getElementById('battle-ok-btn');
+            if (okBtn) {
+                okBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                    this.gameState.units.removeDestroyed();
+                    this.render();
+                    // Continue to next artillery or main battle
+                    if (onClose) onClose();
                 };
             }
         }
@@ -466,11 +865,19 @@ class Game {
                 }
                 break;
             case 'escape':
-                // Deselect
-                this.gameState.deselectHex();
-                this.gameState.deselectUnit();
-                this.updateHighlights();
-                this.render();
+                // Cancel inspect mode if active, otherwise deselect
+                if (this.inspectMode) {
+                    this.toggleInspectMode();
+                } else {
+                    this.gameState.deselectHex();
+                    this.gameState.deselectUnit();
+                    this.updateHighlights();
+                    this.render();
+                }
+                break;
+            case 'i':
+                // Toggle inspect mode
+                this.toggleInspectMode();
                 break;
             case 'e':
                 // End turn

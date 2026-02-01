@@ -18,6 +18,7 @@ class MapRenderer {
         // Highlight arrays (set by game logic)
         this.placementHighlights = [];
         this.movementHighlights = [];
+        this.rangedTargetHighlights = [];
     }
 
     // Main render loop
@@ -74,12 +75,15 @@ class MapRenderer {
             });
         }
 
-        // Layer 7: Placement/Movement highlights
+        // Layer 7: Placement/Movement/Ranged highlights
         if (this.placementHighlights.length > 0) {
             this.unitRenderer.drawPlacementHighlights(this.placementHighlights);
         }
         if (this.movementHighlights.length > 0) {
             this.unitRenderer.drawMovementHighlights(this.movementHighlights);
+        }
+        if (this.rangedTargetHighlights.length > 0) {
+            this.unitRenderer.drawRangedTargetHighlights(this.rangedTargetHighlights);
         }
 
         // Layer 8: Hover highlight
@@ -235,10 +239,16 @@ class MapRenderer {
         this.movementHighlights = hexes || [];
     }
 
+    // Set ranged target highlights
+    setRangedTargetHighlights(hexes) {
+        this.rangedTargetHighlights = hexes || [];
+    }
+
     // Clear all highlights
     clearHighlights() {
         this.placementHighlights = [];
         this.movementHighlights = [];
+        this.rangedTargetHighlights = [];
     }
 
     // Draw captured castle overlay

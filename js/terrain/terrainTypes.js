@@ -20,6 +20,7 @@ const TERRAIN_PROPERTIES = {
         movementCost: 1,
         defensiveBonus: 0,
         blocksLineOfSight: false,
+        closeTerrain: false,        // Open terrain - use groundDefense
         color: '#7ed56f',           // Bright green
         borderColor: '#5cb85c',
         iconColor: null
@@ -29,6 +30,7 @@ const TERRAIN_PROPERTIES = {
         movementCost: 2,
         defensiveBonus: 1,
         blocksLineOfSight: true,
+        closeTerrain: true,         // Close terrain - use closeDefense
         color: '#28a745',           // Forest green
         borderColor: '#1e7e34',
         iconColor: '#155724'
@@ -38,6 +40,7 @@ const TERRAIN_PROPERTIES = {
         movementCost: 1,
         defensiveBonus: 3,
         blocksLineOfSight: false,
+        closeTerrain: true,         // Close terrain - use closeDefense
         color: '#adb5bd',           // Stone gray
         borderColor: '#6c757d',
         iconColor: '#495057',
@@ -48,6 +51,7 @@ const TERRAIN_PROPERTIES = {
         movementCost: Infinity,     // Impassable
         defensiveBonus: 0,
         blocksLineOfSight: true,
+        closeTerrain: true,         // Close terrain - use closeDefense
         color: '#8b7355',           // Brown
         borderColor: '#6b5344',
         iconColor: '#ffffff',       // Snow cap
@@ -58,6 +62,7 @@ const TERRAIN_PROPERTIES = {
         movementCost: 2,
         defensiveBonus: 1,
         blocksLineOfSight: false,
+        closeTerrain: false,        // Open terrain - use groundDefense
         providesHeightBonus: true,
         color: '#c4a35a',           // Sandy brown
         borderColor: '#a08040',
@@ -68,6 +73,7 @@ const TERRAIN_PROPERTIES = {
         movementCost: Infinity,
         defensiveBonus: 0,
         blocksLineOfSight: false,
+        closeTerrain: false,        // Open terrain
         color: '#5dade2',           // Bright blue
         borderColor: '#3498db',
         iconColor: '#85c1e9',
@@ -78,6 +84,7 @@ const TERRAIN_PROPERTIES = {
         movementCost: 'all',        // Costs ALL remaining movement (special rule)
         defensiveBonus: 0,
         blocksLineOfSight: false,
+        closeTerrain: false,        // Open terrain
         color: '#7ed56f',           // Same as grass - river line drawn on top
         borderColor: '#5cb85c',
         iconColor: '#85c1e9',
@@ -223,4 +230,15 @@ const ENTRENCHMENT_RULES = {
  */
 function getEntrenchmentRules(terrainType) {
     return ENTRENCHMENT_RULES[terrainType] || ENTRENCHMENT_RULES[TerrainType.GRASS];
+}
+
+/**
+ * Check if terrain is "close terrain" (uses closeDefense instead of groundDefense)
+ * Close terrain: Woods, Castle, Mountain (cramped fighting favors infantry)
+ * @param {string} terrainType - The terrain type
+ * @returns {boolean} True if close terrain
+ */
+function isCloseTerrain(terrainType) {
+    const props = getTerrainProperties(terrainType);
+    return props.closeTerrain === true;
 }

@@ -21,6 +21,7 @@
                 <button id="end-turn-btn">End Turn</button>
                 <button id="toggle-grid-btn">Toggle Grid</button>
                 <button id="toggle-coords-btn">Show Coords</button>
+                <button id="inspect-btn" title="Inspect Unit">🔍 Inspect</button>
             </div>
             <div id="sidebar-info">
                 <div class="info-row">
@@ -36,6 +37,7 @@
                 <div class="help-title">Keyboard:</div>
                 <div class="help-item">G - Grid</div>
                 <div class="help-item">C - Coords</div>
+                <div class="help-item">I - Inspect</div>
                 <div class="help-item">E - End Turn</div>
                 <div class="help-item">ESC - Deselect</div>
             </div>
@@ -52,6 +54,80 @@
                 <p class="modal-footer-text">The realm is yours, my liege!</p>
             </div>
             <button id="victory-ok-btn" class="modal-btn">Long Live the King!</button>
+        </div>
+    </div>
+
+    <!-- Unit Inspect Modal -->
+    <div id="inspect-modal" class="modal hidden">
+        <div class="modal-content inspect-modal">
+            <div class="modal-header" id="inspect-unit-name">Unit Details</div>
+            <div class="modal-body">
+                <div class="inspect-section">
+                    <div class="inspect-section-title">Status</div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Strength:</span>
+                        <span id="inspect-strength">10/10</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Movement:</span>
+                        <span id="inspect-movement">3/3</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Ammo:</span>
+                        <span id="inspect-ammo">Unlimited</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Experience:</span>
+                        <span id="inspect-experience">0.0</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Entrenchment:</span>
+                        <span id="inspect-entrenchment">0</span>
+                    </div>
+                </div>
+                <div class="inspect-section">
+                    <div class="inspect-section-title">Combat Stats</div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Soft Attack:</span>
+                        <span id="inspect-soft-attack">6</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Hard Attack:</span>
+                        <span id="inspect-hard-attack">2</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Ground Defense:</span>
+                        <span id="inspect-ground-defense">6</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Close Defense:</span>
+                        <span id="inspect-close-defense">8</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Initiative:</span>
+                        <span id="inspect-initiative">1</span>
+                    </div>
+                </div>
+                <div class="inspect-section">
+                    <div class="inspect-section-title">Other</div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Spotting:</span>
+                        <span id="inspect-spotting">2</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Range:</span>
+                        <span id="inspect-range">Melee</span>
+                    </div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Target Type:</span>
+                        <span id="inspect-target-type">Soft</span>
+                    </div>
+                </div>
+                <div class="inspect-description" id="inspect-description">
+                    Basic foot soldiers armed with spears and swords.
+                </div>
+            </div>
+            <button id="inspect-ok-btn" class="modal-btn">Close</button>
         </div>
     </div>
 
@@ -90,6 +166,10 @@
                         <span id="battle-power-info">16 vs 20 (ratio: 0.80)</span>
                     </div>
                     <div class="battle-details-row">
+                        <span class="detail-label">Terrain:</span>
+                        <span id="battle-terrain-info">Open (Ground Def)</span>
+                    </div>
+                    <div class="battle-details-row">
                         <span class="detail-label">Entrenchment:</span>
                         <span id="battle-entrench-info">0 vs 3 → 2</span>
                     </div>
@@ -100,6 +180,18 @@
                     <div class="battle-details-row">
                         <span class="detail-label">Initiative:</span>
                         <span id="battle-init-info">+1 (attacker only)</span>
+                    </div>
+                    <div class="battle-details-row">
+                        <span class="detail-label">Fatigue:</span>
+                        <span id="battle-fatigue-info">None</span>
+                    </div>
+                    <div class="battle-details-row">
+                        <span class="detail-label">Surprise:</span>
+                        <span id="battle-surprise-info">No</span>
+                    </div>
+                    <div class="battle-details-row">
+                        <span class="detail-label">River:</span>
+                        <span id="battle-river-info">No</span>
                     </div>
                     <div class="battle-details-row">
                         <span class="detail-label">Raw Damage:</span>

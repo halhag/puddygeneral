@@ -37,34 +37,70 @@ function gaussianRandom(mean = 0, stdDev = 1) {
 
 /**
  * Calculate combat power for an attacker
- * Formula: softAttack (or hardAttack) + strength + initiative + experience
+ * Formula: softAttack (or hardAttack) + effectiveStrength + initiative + experience
+ * Strength is reduced by movement fatigue (20% per tier, max 2 tiers)
+ * Surprise attacks lose all initiative and additional 20% strength
+ * River attacks (from river to non-river) lose all initiative and 30% strength
  * @param {Unit} attacker - The attacking unit
  * @param {Unit} defender - The defending unit (to determine soft/hard attack)
+ * @param {Object} options - Optional parameters
+ * @param {boolean} options.surpriseAttack - Whether attacker stumbled into hidden enemy
+ * @param {boolean} options.riverAttack - Whether attacker is on river attacking non-river
  * @returns {number} Attacker's combat power
  */
-function calculateAttackerPower(attacker, defender) {
+function calculateAttackerPower(attacker, defender, options = {}) {
     const attackerType = attacker.getType();
     const defenderType = defender.getType();
 
     // Choose soft or hard attack based on defender's target type
     const attackValue = getAttackValue(attackerType, defenderType);
 
-    // Initiative only applies to attacker, experience applies to both
-    return attackValue + attacker.strength + attackerType.initiative + attacker.experience;
+    // Calculate movement fatigue
+    // Each 33% of movement used = 1 tier, max 2 tiers
+    // 20% strength reduction per tier (max 40%)
+    const maxMovement = attackerType.movement;
+    const movementUsed = maxMovement - attacker.movementRemaining;
+    const percentUsed = maxMovement > 0 ? movementUsed / maxMovement : 0;
+    const fatigueTiers = Math.min(2, Math.floor(percentUsed / 0.33));
+    let strengthMultiplier = 1 - (fatigueTiers * 0.20);  // 1.0, 0.8, or 0.6
+
+    // Apply surprise penalty (stacks with fatigue)
+    let effectiveInitiative = attackerType.initiative;
+    if (options.surpriseAttack) {
+        strengthMultiplier -= 0.20;  // Additional 20% strength loss
+        effectiveInitiative = 0;     // Lose all initiative when surprised
+    }
+
+    // Apply river attack penalty (attacking from river to non-river)
+    if (options.riverAttack) {
+        strengthMultiplier -= 0.30;  // 30% strength loss from fighting in river
+        effectiveInitiative = 0;     // Lose all initiative - hard to coordinate from water
+    }
+
+    // Ensure multiplier doesn't go below 20% (minimum effective strength)
+    strengthMultiplier = Math.max(0.2, strengthMultiplier);
+
+    // Apply penalties to strength component
+    const effectiveStrength = attacker.strength * strengthMultiplier;
+
+    // Initiative only applies to attacker (0 if surprised), experience applies to both
+    return attackValue + effectiveStrength + effectiveInitiative + attacker.experience;
 }
 
 /**
  * Calculate combat power for a defender
  * Formula: groundDefense (or closeDefense) + strength + entrenchment + experience
+ * Uses closeDefense in close terrain (woods, castle, mountain)
+ * Uses groundDefense in open terrain (grass, hill, river)
  * @param {Unit} defender - The defending unit
- * @param {boolean} isMelee - Whether this is melee combat (adjacent)
+ * @param {boolean} closeTerrain - Whether defender is in close terrain
  * @returns {number} Defender's combat power
  */
-function calculateDefenderPower(defender, isMelee = true) {
+function calculateDefenderPower(defender, closeTerrain = false) {
     const defenderType = defender.getType();
 
-    // Use closeDefense for melee, groundDefense otherwise
-    const defenseValue = getDefenseValue(defenderType, isMelee);
+    // Use closeDefense in close terrain, groundDefense in open terrain
+    const defenseValue = getDefenseValue(defenderType, closeTerrain);
 
     return defenseValue + defender.strength + defender.entrenchment + defender.experience;
 }
@@ -123,19 +159,21 @@ function clampDamage(damage, maxStrength) {
  * @param {Unit} attacker - The attacking unit
  * @param {Unit} defender - The defending unit
  * @param {Object} options - Optional parameters
- * @param {boolean} options.isMelee - Whether this is melee combat (default: true)
+ * @param {boolean} options.closeTerrain - Whether defender is in close terrain (woods, castle, mountain)
+ * @param {boolean} options.surpriseAttack - Whether attacker stumbled into hidden enemy
+ * @param {boolean} options.riverAttack - Whether attacker is on river attacking non-river
  * @returns {BattleResult} The battle outcome
  */
 function resolveBattle(attacker, defender, options = {}) {
-    const isMelee = options.isMelee !== undefined ? options.isMelee : true;
+    const closeTerrain = options.closeTerrain || false;
 
     // Store initial strengths
     const attackerStrengthBefore = attacker.strength;
     const defenderStrengthBefore = defender.strength;
 
-    // Calculate combat powers
-    const attackerPower = calculateAttackerPower(attacker, defender);
-    const defenderPower = calculateDefenderPower(defender, isMelee);
+    // Calculate combat powers (pass surprise option to attacker power calc)
+    const attackerPower = calculateAttackerPower(attacker, defender, options);
+    const defenderPower = calculateDefenderPower(defender, closeTerrain);
 
     // Calculate power ratio (prevent division by zero)
     const powerRatio = defenderPower > 0 ? attackerPower / defenderPower :
@@ -144,13 +182,24 @@ function resolveBattle(attacker, defender, options = {}) {
     // Get damage distribution based on power ratio
     const distribution = calculateDamageDistribution(powerRatio);
 
+    // Scale down total damage when both units are weak
+    // Total damage should not exceed 75% of combined remaining strength
+    const combinedStrength = attackerStrengthBefore + defenderStrengthBefore;
+    const maxTotalDamage = combinedStrength * 0.75;
+    const effectiveTotalDamage = Math.min(BATTLE_CONFIG.BASE_TOTAL_DAMAGE, maxTotalDamage);
+
     // Calculate base expected damage for each side
-    const baseDefenderDamage = BATTLE_CONFIG.BASE_TOTAL_DAMAGE * distribution.attackerShare;
-    const baseAttackerDamage = BATTLE_CONFIG.BASE_TOTAL_DAMAGE * distribution.defenderShare;
+    const baseDefenderDamage = effectiveTotalDamage * distribution.attackerShare;
+    const baseAttackerDamage = effectiveTotalDamage * distribution.defenderShare;
 
     // Apply Gaussian variance for realistic randomness
     let defenderDamageRaw = applyDamageVariance(baseDefenderDamage);
     let attackerDamageRaw = applyDamageVariance(baseAttackerDamage);
+
+    // Ranged attacks: attacker takes no return fire
+    if (options.rangedAttack) {
+        attackerDamageRaw = 0;
+    }
 
     // Check for extreme mismatch (potential rout)
     if (powerRatio >= BATTLE_CONFIG.ROUT_THRESHOLD) {
@@ -194,6 +243,7 @@ function resolveBattle(attacker, defender, options = {}) {
         attackerPower: attackerPower,
         defenderPower: defenderPower,
         powerRatio: powerRatio,
+        closeTerrain: closeTerrain,     // Whether close defense was used
 
         // Outcome flags
         attackerDestroyed: attackerStrengthAfter <= 0,

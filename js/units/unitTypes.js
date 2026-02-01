@@ -73,6 +73,52 @@ const UNIT_TYPES = {
         // Display
         icon: 'infantry',       // For future sprite/icon system
         description: 'Basic foot soldiers armed with spears and swords. Reliable and cost-effective.'
+    },
+
+    /**
+     * Trebuchet (Siege Artillery)
+     * Ranged siege weapon. Devastating at range but extremely vulnerable in close combat.
+     * Medieval equivalent of PGII's artillery
+     */
+    trebuchet: {
+        id: 'trebuchet',
+        name: 'Trebuchet',
+        unitClass: UnitClass.SIEGE,
+
+        // Economy
+        cost: 84,
+
+        // Supplies
+        maxAmmo: 9,             // Uses ammo per attack
+
+        // Movement
+        movementType: MovementType.WHEEL,
+        movement: 2,            // Slow - siege equipment
+
+        // Vision
+        spotting: 1,            // Limited vision
+
+        // Combat range
+        range: 2,               // Can attack 1-2 hexes away (ranged)
+
+        // Combat initiative
+        initiative: 2,
+
+        // Attack values (damage dealt)
+        softAttack: 11,         // Devastating vs infantry
+        hardAttack: 5,          // Weak vs armored
+        navalAttack: 1,         // vs ships (future use)
+
+        // Defense values (damage reduction)
+        groundDefense: 2,       // Very vulnerable
+        closeDefense: 0,        // Helpless in melee
+
+        // Target classification
+        targetType: TargetType.SOFT,
+
+        // Display
+        icon: 'trebuchet',
+        description: 'Siege engine that hurls heavy projectiles. Devastating at range but vulnerable in close combat.'
     }
 };
 
@@ -116,13 +162,15 @@ function getAttackValue(attackerType, defenderType) {
 }
 
 /**
- * Calculate defense value for a unit
+ * Calculate defense value for a unit based on terrain
+ * Close terrain (woods, castle, mountain) uses closeDefense
+ * Open terrain (grass, hill, river) uses groundDefense
  * @param {Object} defenderType - The defending unit's type definition
- * @param {boolean} isMelee - Whether this is a melee (adjacent) attack
+ * @param {boolean} closeTerrain - Whether defender is in close terrain
  * @returns {number} The defense value to use
  */
-function getDefenseValue(defenderType, isMelee = false) {
-    if (isMelee && defenderType.closeDefense > 0) {
+function getDefenseValue(defenderType, closeTerrain = false) {
+    if (closeTerrain && defenderType.closeDefense > 0) {
         return defenderType.closeDefense;
     }
     return defenderType.groundDefense;

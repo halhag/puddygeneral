@@ -328,3 +328,66 @@ body {
     color: #e0e0e0;
     font-family: 'Consolas', 'Courier New', monospace;
 }
+
+/* Inspect Button Active State */
+#inspect-btn.active {
+    background: linear-gradient(180deg, #4a8a4a 0%, #2a5a2a 100%);
+    border-color: #6aaa6a;
+    box-shadow: 0 0 8px rgba(100, 200, 100, 0.4);
+}
+
+/* Inspect Modal Styles */
+.inspect-modal {
+    max-width: 380px;
+    min-width: 320px;
+}
+
+.inspect-modal .modal-header {
+    color: #87ceeb;
+    font-size: 22px;
+}
+
+.inspect-section {
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border: 1px solid #3a3a5a;
+}
+
+.inspect-section-title {
+    color: #aaa;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #3a3a5a;
+}
+
+.inspect-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 3px 0;
+}
+
+.inspect-label {
+    color: #888;
+}
+
+.inspect-row span:last-child {
+    color: #e0e0e0;
+    font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.inspect-description {
+    color: #aaa;
+    font-size: 12px;
+    font-style: italic;
+    text-align: center;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    margin-bottom: 15px;
+}

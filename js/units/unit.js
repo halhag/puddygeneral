@@ -27,7 +27,6 @@ class Unit {
         this.ammo = unitType.maxAmmo;  // Current ammo (null if unlimited)
         this.experience = 0;        // Veterancy level (0-5)
         this.entrenchment = 0;      // Dig-in level (0-8)
-        this.suppression = 0;       // Suppression value (ignored for now)
 
         // Turn state (reset each turn)
         this.movementRemaining = unitType.movement;
@@ -248,7 +247,6 @@ class Unit {
             ammo: this.ammo,
             experience: this.experience,
             entrenchment: this.entrenchment,
-            suppression: this.suppression,
             movementRemaining: this.movementRemaining,
             hasAttacked: this.hasAttacked,
             hasMoved: this.hasMoved,
@@ -268,7 +266,6 @@ class Unit {
         unit.ammo = data.ammo;
         unit.experience = data.experience || 0;
         unit.entrenchment = data.entrenchment || 0;
-        unit.suppression = data.suppression || 0;
         unit.movementRemaining = data.movementRemaining;
         unit.hasAttacked = data.hasAttacked;
         unit.hasMoved = data.hasMoved || false;
