@@ -22,12 +22,16 @@ const RebuildSystem = {
     /**
      * Calculate rebuild costs for a unit
      * @param {Unit} unit - The unit to rebuild
-     * @returns {Object} { withExp, cheap, expLoss, missingStrength }
+     * @returns {Object} { withExp, cheap, expLoss, missingStrength, costPerStrength, costPerStrengthCheap }
      */
     getCosts(unit) {
         const unitType = unit.getType();
         const missingStrength = 10 - unit.strength;
         const missingRatio = missingStrength / 10;
+
+        // Cost per strength point
+        const costPerStrength = unitType.cost / 10;
+        const costPerStrengthCheap = costPerStrength / 2;
 
         // Cost with experience = proportional to missing strength
         const withExp = Math.ceil(missingRatio * unitType.cost);
@@ -38,40 +42,74 @@ const RebuildSystem = {
         // Experience loss = proportional to missing strength
         const expLoss = missingRatio * unit.experience;
 
-        return { withExp, cheap, expLoss, missingStrength };
+        return { withExp, cheap, expLoss, missingStrength, costPerStrength, costPerStrengthCheap };
     },
 
     /**
-     * Rebuild a unit to full strength
+     * Calculate how much strength can be afforded with available prestige
+     * @param {Unit} unit - The unit to rebuild
+     * @param {number} availablePrestige - Available prestige
+     * @param {boolean} keepExperience - If true, use full price; if false, use cheap price
+     * @returns {Object} { affordableStrength, cost, expLoss }
+     */
+    getAffordableRebuild(unit, availablePrestige, keepExperience) {
+        const unitType = unit.getType();
+        const missingStrength = 10 - unit.strength;
+        const costPerStrength = keepExperience ? (unitType.cost / 10) : (unitType.cost / 20);
+
+        // How many strength points can we afford?
+        const affordableStrength = Math.min(missingStrength, Math.floor(availablePrestige / costPerStrength));
+
+        if (affordableStrength <= 0) {
+            return { affordableStrength: 0, cost: 0, expLoss: 0 };
+        }
+
+        // Calculate actual cost (using ceil for each point to match original formula behavior)
+        const cost = Math.ceil(affordableStrength * costPerStrength);
+
+        // Experience loss is proportional to strength being rebuilt (for cheap option)
+        let expLoss = 0;
+        if (!keepExperience) {
+            const rebuiltRatio = affordableStrength / 10;
+            expLoss = rebuiltRatio * unit.experience;
+        }
+
+        return { affordableStrength, cost, expLoss };
+    },
+
+    /**
+     * Rebuild a unit (full or partial based on available prestige)
      * @param {GameState} gameState - The current game state
      * @param {Unit} unit - The unit to rebuild
      * @param {boolean} keepExperience - If true, pay full price; if false, lose exp
-     * @returns {Object} { success, cost, expLost, insufficientFunds }
+     * @returns {Object} { success, cost, expLost, strengthGained }
      */
     rebuild(gameState, unit, keepExperience) {
         if (!this.canRebuild(gameState, unit)) {
-            return { success: false, cost: 0, expLost: 0 };
+            return { success: false, cost: 0, expLost: 0, strengthGained: 0 };
         }
 
-        const costs = this.getCosts(unit);
-        const cost = keepExperience ? costs.withExp : costs.cheap;
+        // Calculate what we can afford
+        const affordable = this.getAffordableRebuild(unit, gameState.prestige, keepExperience);
 
-        if (gameState.prestige < cost) {
-            return { success: false, cost: 0, expLost: 0, insufficientFunds: true };
+        if (affordable.affordableStrength <= 0) {
+            return { success: false, cost: 0, expLost: 0, strengthGained: 0, insufficientFunds: true };
         }
 
         // Deduct prestige
-        gameState.prestige -= cost;
+        gameState.prestige -= affordable.cost;
 
         // Calculate experience loss if choosing cheap option
         let expLost = 0;
         if (!keepExperience) {
-            expLost = costs.expLoss;
+            expLost = affordable.expLoss;
             unit.experience = Math.max(0, unit.experience - expLost);
         }
 
-        // Restore strength to full
-        unit.strength = 10;
+        // Restore strength (partial or full)
+        const oldStrength = unit.strength;
+        unit.strength = Math.min(10, unit.strength + affordable.affordableStrength);
+        const strengthGained = unit.strength - oldStrength;
 
         // Mark unit as having acted (can't move or attack this turn)
         unit.hasMoved = true;
@@ -81,9 +119,9 @@ const RebuildSystem = {
         unit.entrenchment = 0;
         unit.turnsStationary = 0;
 
-        console.log(`Unit rebuilt! Cost: ${cost}, Exp lost: ${expLost.toFixed(2)}`);
+        console.log(`Unit rebuilt! Strength +${strengthGained}, Cost: ${affordable.cost}, Exp lost: ${expLost.toFixed(2)}`);
 
-        return { success: true, cost, expLost };
+        return { success: true, cost: affordable.cost, expLost, strengthGained };
     },
 
     /**

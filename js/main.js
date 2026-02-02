@@ -446,11 +446,31 @@ class Game {
                 rebuildSection.classList.remove('hidden');
 
                 const costs = RebuildSystem.getCosts(unit);
+                const prestige = this.gameState.prestige;
+
+                // Calculate what's affordable for each option
+                const affordableExp = RebuildSystem.getAffordableRebuild(unit, prestige, true);
+                const affordableCheap = RebuildSystem.getAffordableRebuild(unit, prestige, false);
 
                 document.getElementById('inspect-missing-strength').textContent = costs.missingStrength;
-                document.getElementById('rebuild-cost-exp').textContent = `Cost: ${costs.withExp}`;
-                document.getElementById('rebuild-cost-cheap').textContent = `Cost: ${costs.cheap}`;
-                document.getElementById('rebuild-exp-loss').textContent = `Exp loss: ${costs.expLoss.toFixed(2)}`;
+
+                // Show full cost, and if partial, also show what's affordable
+                if (affordableExp.affordableStrength > 0 && affordableExp.affordableStrength < costs.missingStrength) {
+                    document.getElementById('rebuild-cost-exp').textContent =
+                        `Full: ${costs.withExp} | +${affordableExp.affordableStrength} str: ${affordableExp.cost}`;
+                } else {
+                    document.getElementById('rebuild-cost-exp').textContent = `Cost: ${costs.withExp}`;
+                }
+
+                if (affordableCheap.affordableStrength > 0 && affordableCheap.affordableStrength < costs.missingStrength) {
+                    document.getElementById('rebuild-cost-cheap').textContent =
+                        `Full: ${costs.cheap} | +${affordableCheap.affordableStrength} str: ${affordableCheap.cost}`;
+                    document.getElementById('rebuild-exp-loss').textContent =
+                        `Exp loss: ${affordableCheap.expLoss.toFixed(2)}`;
+                } else {
+                    document.getElementById('rebuild-cost-cheap').textContent = `Cost: ${costs.cheap}`;
+                    document.getElementById('rebuild-exp-loss').textContent = `Exp loss: ${costs.expLoss.toFixed(2)}`;
+                }
 
                 const expBtn = document.getElementById('rebuild-with-exp-btn');
                 const cheapBtn = document.getElementById('rebuild-cheap-btn');
@@ -463,12 +483,18 @@ class Game {
                     rebuildStatus.textContent = reason || '';
                     rebuildStatus.className = 'rebuild-status error';
                 } else {
-                    expBtn.disabled = this.gameState.prestige < costs.withExp;
-                    cheapBtn.disabled = this.gameState.prestige < costs.cheap;
+                    // Enable buttons if we can afford at least 1 strength point
+                    expBtn.disabled = affordableExp.affordableStrength <= 0;
+                    cheapBtn.disabled = affordableCheap.affordableStrength <= 0;
 
-                    if (this.gameState.prestige < costs.cheap) {
-                        rebuildStatus.textContent = 'Insufficient prestige';
+                    if (affordableCheap.affordableStrength <= 0) {
+                        rebuildStatus.textContent = 'Insufficient prestige (need at least ' +
+                            Math.ceil(costs.costPerStrengthCheap) + ')';
                         rebuildStatus.className = 'rebuild-status error';
+                    } else if (affordableExp.affordableStrength < costs.missingStrength ||
+                               affordableCheap.affordableStrength < costs.missingStrength) {
+                        rebuildStatus.textContent = 'Partial rebuild available';
+                        rebuildStatus.className = 'rebuild-status';
                     } else {
                         rebuildStatus.textContent = '';
                         rebuildStatus.className = 'rebuild-status';
@@ -512,8 +538,11 @@ class Game {
 
             const rebuildStatus = document.getElementById('rebuild-status');
             if (rebuildStatus) {
-                rebuildStatus.textContent = `Rebuilt! Cost: ${result.cost}` +
-                    (result.expLost > 0 ? `, Exp lost: ${result.expLost.toFixed(2)}` : '');
+                let msg = `Rebuilt! +${result.strengthGained} str, Cost: ${result.cost}`;
+                if (result.expLost > 0) {
+                    msg += `, Exp lost: ${result.expLost.toFixed(2)}`;
+                }
+                rebuildStatus.textContent = msg;
                 rebuildStatus.className = 'rebuild-status success';
             }
         } else if (result.insufficientFunds) {
