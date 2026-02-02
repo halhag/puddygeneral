@@ -16,6 +16,34 @@ body {
     height: 100vh;
 }
 
+#main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#header {
+    background: linear-gradient(180deg, #2d2d4a 0%, #1a1a2e 100%);
+    border-bottom: 2px solid #4a4a6a;
+    padding: 15px 20px;
+    text-align: center;
+}
+
+#game-title {
+    color: #ffd700;
+    font-size: 32px;
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    letter-spacing: 3px;
+}
+
+#level-display {
+    color: #88ccff;
+    font-size: 21px;
+    margin-top: 5px;
+}
+
 #map-area {
     flex: 1;
     position: relative;
@@ -50,22 +78,13 @@ body {
 
 /* Right Sidebar */
 #sidebar {
-    width: 160px;
+    width: 180px;
     background: linear-gradient(180deg, #2d2d4a 0%, #1a1a2e 100%);
     border-left: 2px solid #4a4a6a;
     display: flex;
     flex-direction: column;
     padding: 15px 10px;
-    gap: 20px;
-}
-
-#sidebar-title {
-    color: #ffd700;
-    font-size: 16px;
-    font-weight: bold;
-    text-align: center;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #4a4a6a;
+    gap: 15px;
 }
 
 #sidebar-buttons {
@@ -79,8 +98,8 @@ body {
     color: #e0e0e0;
     border: 1px solid #6a6a8a;
     border-radius: 4px;
-    padding: 10px 8px;
-    font-size: 12px;
+    padding: 12px 8px;
+    font-size: 14px;
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -95,20 +114,57 @@ body {
 }
 
 #sidebar-info {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    padding: 15px;
 }
 
 .info-row {
     display: flex;
     justify-content: space-between;
     color: #e0e0e0;
-    font-size: 13px;
+    font-size: 16px;
+    padding: 4px 0;
 }
 
 .info-label {
     color: #aaa;
+}
+
+#sidebar-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#sidebar-actions button {
+    background: linear-gradient(180deg, #5a5a7a 0%, #3a3a5a 100%);
+    color: #e0e0e0;
+    border: 1px solid #6a6a8a;
+    border-radius: 4px;
+    padding: 12px 8px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#sidebar-actions button:hover {
+    background: linear-gradient(180deg, #6a6a8a 0%, #4a4a6a 100%);
+    border-color: #8a8aaa;
+}
+
+#sidebar-actions button:active {
+    background: linear-gradient(180deg, #4a4a6a 0%, #3a3a5a 100%);
+}
+
+#end-turn-btn {
+    background: linear-gradient(180deg, #4a6a4a 0%, #2a4a2a 100%) !important;
+    border-color: #5a8a5a !important;
+}
+
+#end-turn-btn:hover {
+    background: linear-gradient(180deg, #5a7a5a 0%, #3a5a3a 100%) !important;
+    border-color: #6a9a6a !important;
 }
 
 #sidebar-help {
@@ -450,4 +506,88 @@ body {
 
 .rebuild-status.success {
     color: #90EE90;
+}
+
+/* Defeat Modal Specific Styles */
+.defeat-modal .modal-content {
+    background: linear-gradient(180deg, #5c3d3d 0%, #2e1a1a 100%);
+    border-color: #ff4444;
+    box-shadow: 0 0 30px rgba(255, 68, 68, 0.3);
+}
+
+.defeat-modal .modal-header {
+    color: #ff4444;
+}
+
+.defeat-modal .modal-btn {
+    background: linear-gradient(180deg, #8b1414 0%, #5a1010 100%);
+    border-color: #ff4444;
+}
+
+.defeat-modal .modal-btn:hover {
+    background: linear-gradient(180deg, #a01818 0%, #6b1212 100%);
+    box-shadow: 0 0 15px rgba(255, 68, 68, 0.4);
+}
+
+/* Confirmation Modal Styles */
+.confirm-modal {
+    max-width: 350px;
+}
+
+.confirm-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.confirm-yes {
+    background: linear-gradient(180deg, #4a8b14 0%, #2a5a10 100%) !important;
+    border-color: #6aaa44 !important;
+}
+
+.confirm-yes:hover {
+    background: linear-gradient(180deg, #5aa018 0%, #3a6b12 100%) !important;
+    box-shadow: 0 0 15px rgba(100, 200, 68, 0.4) !important;
+}
+
+.confirm-no {
+    background: linear-gradient(180deg, #8b1414 0%, #5a1010 100%) !important;
+    border-color: #aa4444 !important;
+}
+
+.confirm-no:hover {
+    background: linear-gradient(180deg, #a01818 0%, #6b1212 100%) !important;
+    box-shadow: 0 0 15px rgba(255, 68, 68, 0.4) !important;
+}
+
+/* Unit finished turn indicator */
+.unit-finished {
+    opacity: 0.6;
+}
+
+/* Victory Modal Specific Styles */
+.victory-modal .modal-content {
+    background: linear-gradient(180deg, #3d5c3d 0%, #1a2e1a 100%);
+    border-color: #44ff44;
+    box-shadow: 0 0 30px rgba(68, 255, 68, 0.3);
+}
+
+.victory-modal .modal-header {
+    color: #44ff44;
+}
+
+.victory-modal .modal-btn {
+    background: linear-gradient(180deg, #148b14 0%, #105a10 100%);
+    border-color: #44ff44;
+}
+
+.victory-modal .modal-btn:hover {
+    background: linear-gradient(180deg, #18a018 0%, #126b12 100%);
+    box-shadow: 0 0 15px rgba(68, 255, 68, 0.4);
+}
+
+.victory-bonus {
+    color: #ffd700;
+    font-weight: bold;
 }

@@ -4,7 +4,8 @@
 const GamePhase = Object.freeze({
     PLACEMENT: 'placement',
     MOVEMENT: 'movement',
-    VICTORY: 'victory'
+    VICTORY: 'victory',
+    DEFEAT: 'defeat'
 });
 
 /**
@@ -28,14 +29,20 @@ class GameState {
         this.selectedHex = null;
         this.selectedUnit = null;
         this.unitsToPlace = 3;          // Units remaining to place
+        this.unitTypesToPlace = [];     // Array of unit types to place (e.g., ['infantry', 'infantry', 'trebuchet'])
         this.capturedCastles = [];      // Array of captured castle hex keys
         this.totalCastles = 3;          // Castles needed to win (enemy castles)
+        this.turnLimit = 15;            // Total turns allowed (counts down)
+        this.turnsRemaining = 15;       // Turns remaining (starts at turnLimit)
+        this.earlyVictoryBonus = 20;    // Prestige per turn remaining on victory
         this.prestige = 150;            // Currency for rebuilding units
         this.settings = {
             fogOfWar: true,     // Fog of war is now ON by default
             showGrid: true,
             showCoordinates: false
         };
+        // Current level number (for campaign progression)
+        this.currentLevel = 1;
         // Internal cache for movement costs (set by getValidMovementHexes)
         this._movementCosts = new Map();
         // Cache for visible hexes (recalculated when units move)
@@ -43,28 +50,54 @@ class GameState {
     }
 
     // Create a new game with default map
-    static create(name = 'New Game') {
+    static create(name = 'New Game', levelId = 1) {
         const state = new GameState();
         state.id = crypto.randomUUID();
         state.name = name;
         state.createdAt = new Date().toISOString();
         state.updatedAt = state.createdAt;
-        state.map = createDefaultMap();
-        state.units = new UnitManager();
-        state.phase = GamePhase.PLACEMENT;
-        state.unitsToPlace = 3;
-        state.capturedCastles = [];
+        state.currentLevel = levelId;
 
-        // Place enemy units in the 3 enemy castles (left side of map)
-        state.placeEnemyUnits();
+        // Get level definition
+        const level = LevelManager.getLevel(levelId);
 
-        // Place a player trebuchet for testing ranged attacks
-        // Position on right side of map (q=17, vRow=7)
-        const playerTrebuchetPos = { q: 17, vRow: 7 };
-        const playerTrebuchetR = playerTrebuchetPos.vRow - Math.floor(playerTrebuchetPos.q / 2);
-        const playerTrebuchetHex = new Hex(playerTrebuchetPos.q, playerTrebuchetR);
-        const playerTrebuchet = new Unit('trebuchet', 0, playerTrebuchetHex);
-        state.units.addUnit(playerTrebuchet);
+        if (level) {
+            // Create map from level definition (fixed, not random)
+            state.map = LevelManager.createMapFromLevel(level);
+            state.units = new UnitManager();
+            state.phase = GamePhase.PLACEMENT;
+            state.unitsToPlace = level.playerUnitsToPlace;
+            // IMPORTANT: Create a copy of the array, not a reference, so we don't modify the level definition
+            state.unitTypesToPlace = level.playerUnitTypes ? [...level.playerUnitTypes] : Array(level.playerUnitsToPlace).fill('infantry');
+            state.totalCastles = level.castlesToCapture;
+            state.turnLimit = level.turnLimit || 15;
+            state.turnsRemaining = state.turnLimit;
+            state.earlyVictoryBonus = level.earlyVictoryBonus || 20;
+            state.prestige = level.playerStartingPrestige;
+            state.capturedCastles = [];
+
+            // Place enemy units from level definition
+            LevelManager.placeEnemyUnits(state.units, level);
+
+            // Place player's pre-placed units from level definition
+            LevelManager.placePlayerUnits(state.units, level);
+
+            // Set initial entrenchment for all units based on terrain
+            for (const unit of state.units.getAllUnits()) {
+                const cell = state.map.getCell(unit.hex);
+                if (cell) {
+                    unit.updateEntrenchment(cell.terrain);
+                }
+            }
+        } else {
+            // Fallback to old random map if no level found
+            state.map = createDefaultMap();
+            state.units = new UnitManager();
+            state.phase = GamePhase.PLACEMENT;
+            state.unitsToPlace = 3;
+            state.capturedCastles = [];
+            state.placeEnemyUnits();
+        }
 
         return state;
     }
@@ -124,6 +157,7 @@ class GameState {
             turn: this.turn,
             currentPlayer: this.currentPlayer,
             phase: this.phase,
+            currentLevel: this.currentLevel,
             map: this.map ? this.map.toJSON() : null,
             units: this.units ? this.units.toJSON() : [],
             players: this.players,
@@ -131,8 +165,12 @@ class GameState {
                 { q: this.selectedHex.q, r: this.selectedHex.r } : null,
             selectedUnit: this.selectedUnit,
             unitsToPlace: this.unitsToPlace,
+            unitTypesToPlace: this.unitTypesToPlace,
             capturedCastles: this.capturedCastles,
             totalCastles: this.totalCastles,
+            turnLimit: this.turnLimit,
+            turnsRemaining: this.turnsRemaining,
+            earlyVictoryBonus: this.earlyVictoryBonus,
             prestige: this.prestige,
             settings: this.settings
         };
@@ -155,9 +193,14 @@ class GameState {
             new Hex(data.selectedHex.q, data.selectedHex.r) : null;
         state.selectedUnit = data.selectedUnit || null;
         state.unitsToPlace = data.unitsToPlace ?? 0;
+        state.unitTypesToPlace = data.unitTypesToPlace || [];
         state.capturedCastles = data.capturedCastles || [];
         state.totalCastles = data.totalCastles ?? 3;
+        state.turnLimit = data.turnLimit ?? 15;
+        state.turnsRemaining = data.turnsRemaining ?? data.turnLimit ?? 15;
+        state.earlyVictoryBonus = data.earlyVictoryBonus ?? 20;
         state.prestige = data.prestige ?? 150;
+        state.currentLevel = data.currentLevel ?? 1;
         state.settings = { ...state.settings, ...data.settings };
         return state;
     }
@@ -292,8 +335,17 @@ class GameState {
         const isValid = validHexes.some(h => h.equals(hex));
         if (!isValid) return null;
 
-        const unit = this.addUnit('infantry', this.currentPlayer, hex);
+        // Get the next unit type to place (peek first, don't remove yet)
+        const unitType = this.unitTypesToPlace.length > 0
+            ? this.unitTypesToPlace[0]
+            : 'infantry';
+
+        const unit = this.addUnit(unitType, this.currentPlayer, hex);
         if (unit) {
+            // Only remove from array after successful placement
+            if (this.unitTypesToPlace.length > 0) {
+                this.unitTypesToPlace.shift();
+            }
             this.unitsToPlace--;
             // If all units placed, switch to movement phase
             if (this.unitsToPlace <= 0) {
@@ -423,7 +475,7 @@ class GameState {
      * Battle only triggers when clicking on enemy's hex (visible or hidden)
      * @param {Unit} unit - The unit to move
      * @param {Hex} targetHex - Destination hex
-     * @returns {Object} Result: { success, battleTriggered, enemyUnit, actualHex }
+     * @returns {Object} Result: { success, battleTriggered, enemyUnit, actualHex, stoppedByHiddenZOC }
      */
     moveUnit(unit, targetHex) {
         if (!unit || !unit.canMove()) {
@@ -488,9 +540,30 @@ class GameState {
             return { success: false, battleTriggered: false, enemyUnit: null, actualHex: null };
         }
 
-        // Move the unit to target (no battle - just movement)
-        unit.hex = targetHex;
-        unit.useMovement(moveCost, targetHex);
+        // Reconstruct path and check for hidden enemy ZoC
+        const path = this.reconstructPath(unit.hex, targetHex);
+        let actualDestination = targetHex;
+        let stoppedByHiddenZOC = false;
+
+        // Walk the path and stop if we enter hidden enemy ZoC
+        for (let i = 1; i < path.length; i++) {
+            const pathHex = path[i];
+            // Check if this hex is in ZoC of a hidden enemy
+            if (this.isInHiddenEnemyZOC(pathHex)) {
+                // Stop at this hex
+                actualDestination = pathHex;
+                stoppedByHiddenZOC = true;
+                console.log(`Unit stopped at hidden enemy ZoC at (${pathHex.q}, ${pathHex.r})`);
+                break;
+            }
+        }
+
+        // Get actual movement cost for where we stopped
+        const actualMoveCost = this._movementCosts.get(actualDestination.key);
+
+        // Move the unit to actual destination
+        unit.hex = actualDestination;
+        unit.useMovement(actualMoveCost, actualDestination);
 
         // Update visibility after movement
         this.updateVisibility();
@@ -499,9 +572,70 @@ class GameState {
         // Unit simply stops in ZOC (handled by getValidMovementHexes preventing further movement)
 
         // Check if unit moved onto a castle
-        this.checkCastleCapture(targetHex);
+        this.checkCastleCapture(actualDestination);
 
-        return { success: true, battleTriggered: false, enemyUnit: null, actualHex: targetHex };
+        return {
+            success: true,
+            battleTriggered: false,
+            enemyUnit: null,
+            actualHex: actualDestination,
+            stoppedByHiddenZOC: stoppedByHiddenZOC
+        };
+    }
+
+    /**
+     * Reconstruct the path from start to target using cached movement costs
+     * Uses a simple backtracking approach from target to start
+     */
+    reconstructPath(startHex, targetHex) {
+        const path = [targetHex];
+        let current = targetHex;
+
+        while (!current.equals(startHex)) {
+            const currentCost = this._movementCosts.get(current.key);
+            let bestNeighbor = null;
+            let bestCost = currentCost;
+
+            // Find neighbor with lower cost that leads back to start
+            for (let dir = 0; dir < 6; dir++) {
+                const neighbor = current.neighbor(dir);
+                const neighborCost = this._movementCosts.get(neighbor.key);
+
+                if (neighborCost !== undefined && neighborCost < bestCost) {
+                    bestCost = neighborCost;
+                    bestNeighbor = neighbor;
+                }
+            }
+
+            if (bestNeighbor) {
+                path.unshift(bestNeighbor);
+                current = bestNeighbor;
+            } else {
+                // Couldn't find path back (shouldn't happen)
+                break;
+            }
+        }
+
+        return path;
+    }
+
+    /**
+     * Check if hex is in ZoC of a HIDDEN enemy only
+     * @param {Hex} hex - The hex to check
+     * @returns {boolean}
+     */
+    isInHiddenEnemyZOC(hex) {
+        for (let dir = 0; dir < 6; dir++) {
+            const neighbor = hex.neighbor(dir);
+            const unit = this.units.getUnitAt(neighbor);
+            if (unit && unit.playerId !== this.currentPlayer) {
+                // Only count if this enemy is NOT visible
+                if (!this.isHexVisible(neighbor)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -555,6 +689,11 @@ class GameState {
 
             // Check victory
             if (this.capturedCastles.length >= this.totalCastles) {
+                // Award early victory bonus
+                const bonus = this.turnsRemaining * this.earlyVictoryBonus;
+                this.prestige += bonus;
+                console.log(`Early victory bonus: ${this.turnsRemaining} turns × ${this.earlyVictoryBonus} = +${bonus} prestige`);
+
                 this.phase = GamePhase.VICTORY;
                 console.log('VICTORY! All castles captured!');
             }
@@ -574,13 +713,20 @@ class GameState {
      * End the current turn manually
      */
     endTurn() {
-        // Update entrenchment for all units before resetting turn
+        // Update entrenchment for all units before ending turn
         // Units in enemy ZOC cannot build entrenchment
         this.updateAllEntrenchments();
 
-        // Reset all player units for next turn
-        this.units.resetTurn(this.currentPlayer);
-        this.turn++;
+        // Decrement turns remaining (countdown)
+        this.turnsRemaining--;
+        this.turn++;  // Keep track of current turn number for display
+
+        // Check for defeat (ran out of turns)
+        if (this.turnsRemaining <= 0 && this.phase === GamePhase.MOVEMENT) {
+            this.phase = GamePhase.DEFEAT;
+            console.log('DEFEAT! Ran out of turns!');
+        }
+
         this.deselectHex();
         this.deselectUnit();
 
@@ -835,10 +981,27 @@ class GameState {
             const neighbor = hex.neighbor(dir);
             const unit = this.units.getUnitAt(neighbor);
             if (unit && unit.playerId !== this.currentPlayer) {
-                // Only VISIBLE enemies create ZOC
+                // Only VISIBLE enemies create ZOC for display purposes
                 if (this.isHexVisible(neighbor)) {
                     return true;
                 }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if hex is in zone of control of ANY enemy (including hidden)
+     * Used during actual movement to stop units at hidden ZoC
+     * @param {Hex} hex - The hex to check
+     * @returns {boolean}
+     */
+    isInAnyEnemyZOCIncludingHidden(hex) {
+        for (let dir = 0; dir < 6; dir++) {
+            const neighbor = hex.neighbor(dir);
+            const unit = this.units.getUnitAt(neighbor);
+            if (unit && unit.playerId !== this.currentPlayer) {
+                return true;
             }
         }
         return false;

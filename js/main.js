@@ -33,6 +33,9 @@ class Game {
         // Inspection mode
         this.inspectMode = false;
 
+        // Pending confirmation action
+        this.pendingConfirmAction = null;
+
         // Initialize
         this.init();
     }
@@ -92,22 +95,12 @@ class Game {
         // Sidebar buttons
         const newGameBtn = document.getElementById('new-game-btn');
         if (newGameBtn) {
-            newGameBtn.addEventListener('click', () => this.newGame('Medieval Conquest'));
-        }
-
-        const toggleGridBtn = document.getElementById('toggle-grid-btn');
-        if (toggleGridBtn) {
-            toggleGridBtn.addEventListener('click', () => {
-                this.gameState.toggleSetting('showGrid');
-                this.render();
-            });
-        }
-
-        const toggleCoordsBtn = document.getElementById('toggle-coords-btn');
-        if (toggleCoordsBtn) {
-            toggleCoordsBtn.addEventListener('click', () => {
-                this.gameState.toggleSetting('showCoordinates');
-                this.render();
+            newGameBtn.addEventListener('click', () => {
+                this.showConfirmDialog(
+                    'New Game',
+                    'Start a new game? Current progress will be lost.',
+                    () => this.newGame('Medieval Conquest')
+                );
             });
         }
 
@@ -115,7 +108,11 @@ class Game {
         if (endTurnBtn) {
             endTurnBtn.addEventListener('click', () => {
                 if (this.gameState.phase === GamePhase.MOVEMENT) {
-                    this.endTurn();
+                    this.showConfirmDialog(
+                        'End Turn',
+                        'End your turn and let the enemy move?',
+                        () => this.endTurn()
+                    );
                 }
             });
         }
@@ -126,6 +123,17 @@ class Game {
             inspectBtn.addEventListener('click', () => {
                 this.toggleInspectMode();
             });
+        }
+
+        // Confirmation modal buttons
+        const confirmYesBtn = document.getElementById('confirm-yes-btn');
+        if (confirmYesBtn) {
+            confirmYesBtn.addEventListener('click', () => this.handleConfirmYes());
+        }
+
+        const confirmNoBtn = document.getElementById('confirm-no-btn');
+        if (confirmNoBtn) {
+            confirmNoBtn.addEventListener('click', () => this.hideConfirmDialog());
         }
 
         // Inspect modal close button
@@ -259,6 +267,12 @@ class Game {
                     const actualHex = result.actualHex || hex;
                     console.log(`Moved ${selectedUnit.getName()} to (${actualHex.q}, ${actualHex.r})`);
 
+                    // Check if unit was stopped by hidden enemy ZoC
+                    if (result.stoppedByHiddenZOC) {
+                        console.log('Unit stopped by hidden enemy zone of control!');
+                        // Show a brief message or let the player see the newly revealed enemy
+                    }
+
                     // Check if battle was triggered
                     if (result.battleTriggered) {
                         // Check for defensive artillery fire
@@ -344,11 +358,19 @@ class Game {
     updateTurnDisplay() {
         if (this.turnDisplay) {
             if (this.gameState.phase === GamePhase.PLACEMENT) {
-                this.turnDisplay.textContent = `Place: ${this.gameState.unitsToPlace}`;
+                // Show what unit type is next to place
+                const nextType = this.gameState.unitTypesToPlace.length > 0
+                    ? this.gameState.unitTypesToPlace[0]
+                    : 'infantry';
+                const typeName = nextType.charAt(0).toUpperCase() + nextType.slice(1);
+                this.turnDisplay.textContent = `Place ${typeName} (${this.gameState.unitsToPlace} left)`;
             } else if (this.gameState.phase === GamePhase.VICTORY) {
                 this.turnDisplay.textContent = 'VICTORY!';
+            } else if (this.gameState.phase === GamePhase.DEFEAT) {
+                this.turnDisplay.textContent = 'DEFEAT!';
             } else {
-                this.turnDisplay.textContent = this.gameState.turn;
+                // Show turns remaining (countdown style)
+                this.turnDisplay.textContent = `${this.gameState.turnsRemaining} left`;
             }
         }
 
@@ -361,16 +383,36 @@ class Game {
         if (prestigeDisplay) {
             prestigeDisplay.textContent = this.gameState.prestige;
         }
+
+        // Update level display
+        const levelDisplay = document.getElementById('level-display');
+        if (levelDisplay) {
+            const level = LevelManager.getLevel(this.gameState.currentLevel);
+            if (level) {
+                levelDisplay.textContent = `Level ${level.id}: ${level.name}`;
+            } else {
+                levelDisplay.textContent = `Level ${this.gameState.currentLevel}`;
+            }
+        }
     }
 
     showVictory() {
         console.log('=================================');
         console.log('   VICTORY! All castles captured!');
+        console.log(`   Turns remaining: ${this.gameState.turnsRemaining}`);
+        console.log(`   Early victory bonus: +${this.gameState.turnsRemaining * this.gameState.earlyVictoryBonus} prestige`);
         console.log('=================================');
 
         // Show custom victory modal
         const modal = document.getElementById('victory-modal');
         if (modal) {
+            // Update victory text to show bonus
+            const bonusText = document.getElementById('victory-bonus-text');
+            if (bonusText) {
+                const bonus = this.gameState.turnsRemaining * this.gameState.earlyVictoryBonus;
+                bonusText.textContent = `Turns remaining: ${this.gameState.turnsRemaining} (+${bonus} prestige bonus!)`;
+            }
+
             modal.classList.remove('hidden');
 
             const okBtn = document.getElementById('victory-ok-btn');
@@ -380,10 +422,79 @@ class Game {
         }
     }
 
+    showDefeat() {
+        console.log('=================================');
+        console.log('   DEFEAT! Ran out of turns!');
+        console.log('=================================');
+
+        // Show defeat modal
+        const modal = document.getElementById('defeat-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+
+            const okBtn = document.getElementById('defeat-ok-btn');
+            if (okBtn) {
+                okBtn.onclick = () => modal.classList.add('hidden');
+            }
+        }
+
+        this.updateTurnDisplay();
+        this.render();
+    }
+
     /**
-     * Toggle inspection mode
+     * Show confirmation dialog
+     */
+    showConfirmDialog(title, message, onConfirm) {
+        this.pendingConfirmAction = onConfirm;
+
+        const modal = document.getElementById('confirm-modal');
+        const titleEl = document.getElementById('confirm-title');
+        const messageEl = document.getElementById('confirm-message');
+
+        if (modal && titleEl && messageEl) {
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            modal.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * Handle confirmation dialog "Yes" button
+     */
+    handleConfirmYes() {
+        const action = this.pendingConfirmAction;
+        this.hideConfirmDialog();
+        if (action) {
+            action();
+        }
+    }
+
+    /**
+     * Hide confirmation dialog
+     */
+    hideConfirmDialog() {
+        const modal = document.getElementById('confirm-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+        this.pendingConfirmAction = null;
+    }
+
+    /**
+     * Toggle inspection mode, or inspect selected unit directly
      */
     toggleInspectMode() {
+        // If a unit is already selected, inspect it directly
+        if (this.gameState.selectedUnit) {
+            const unit = this.gameState.units.getUnit(this.gameState.selectedUnit);
+            if (unit) {
+                this.showInspectModal(unit);
+                return;
+            }
+        }
+
+        // Otherwise toggle inspect mode
         this.inspectMode = !this.inspectMode;
         const inspectBtn = document.getElementById('inspect-btn');
         if (inspectBtn) {
@@ -718,8 +829,12 @@ class Game {
                     // Remove destroyed units
                     this.gameState.units.removeDestroyed();
 
-                    // Check castle capture if defender was destroyed
-                    if (result.defenderDestroyed) {
+                    // If defender was destroyed and attacker survived, attacker advances into hex
+                    if (result.defenderDestroyed && !result.attackerDestroyed) {
+                        // Move attacker to defender's hex (capture the ground)
+                        attacker.hex = defenderHex;
+
+                        // Now check castle capture (attacker is in the hex)
                         this.gameState.checkCastleCapture(defenderHex);
 
                         // Check victory
@@ -835,12 +950,8 @@ class Game {
                     modal.classList.add('hidden');
                     this.gameState.units.removeDestroyed();
 
-                    if (result.defenderDestroyed) {
-                        this.gameState.checkCastleCapture(defenderHex);
-                        if (this.gameState.phase === GamePhase.VICTORY) {
-                            this.showVictory();
-                        }
-                    }
+                    // Note: Ranged attacks do NOT capture castles
+                    // A unit must physically move into the castle to capture it
 
                     this.gameState.updateVisibility();
                     this.updateTurnDisplay();
@@ -1032,6 +1143,12 @@ class Game {
     endTurn() {
         this.gameState.endTurn();
 
+        // Check for defeat
+        if (this.gameState.phase === GamePhase.DEFEAT) {
+            this.showDefeat();
+            return;
+        }
+
         // Execute enemy AI actions
         const enemyActions = EnemyAI.executeEnemyTurn(this.gameState);
 
@@ -1039,6 +1156,8 @@ class Game {
         if (enemyActions.length > 0) {
             this.showEnemyActionsSequence(enemyActions, 0);
         } else {
+            // Reset player units for the new turn
+            this.gameState.units.resetTurn(0);
             this.updateHighlights();
             this.render();
             console.log(`Turn ${this.gameState.turn} begins`);
@@ -1052,7 +1171,8 @@ class Game {
      */
     showEnemyActionsSequence(actions, index) {
         if (index >= actions.length) {
-            // All actions shown, continue game
+            // All actions shown, reset player units for the new turn
+            this.gameState.units.resetTurn(0);
             this.updateHighlights();
             this.render();
             console.log(`Turn ${this.gameState.turn} begins`);
@@ -1232,13 +1352,20 @@ class Game {
     }
 
     // Create a new game
-    newGame(name = 'Medieval Conquest') {
-        this.gameState = GameState.create(name);
+    newGame(name = 'Medieval Conquest', levelId = 1) {
+        this.gameState = GameState.create(name, levelId);
         GameStorage.saveGame(this.gameState);
         this.gameState.updateVisibility();
         this.updateHighlights();
         this.render();
         this.logGameState();
+
+        // Show level info
+        const level = LevelManager.getLevel(levelId);
+        if (level) {
+            console.log(`Starting Level ${level.id}: ${level.name}`);
+            console.log(level.description);
+        }
     }
 }
 
@@ -1248,7 +1375,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Expose some functions to console for debugging
     window.game = game;
-    window.newGame = (name) => game.newGame(name);
+    window.newGame = (name, levelId) => game.newGame(name, levelId);
     window.save = () => game.save();
 
     console.log('Medieval Conquest loaded!');

@@ -33,6 +33,18 @@ class UnitRenderer {
     }
 
     /**
+     * Check if a unit has finished its turn (can't do anything more useful)
+     * @param {Unit} unit
+     * @returns {boolean}
+     */
+    isUnitDone(unit) {
+        // Unit is done if it has attacked OR has no movement remaining
+        if (unit.hasAttacked) return true;
+        if (unit.movementRemaining <= 0) return true;
+        return false;
+    }
+
+    /**
      * Draw a single unit
      * @param {Unit} unit
      */
@@ -41,12 +53,22 @@ class UnitRenderer {
         const size = this.layout.size;
         const unitType = unit.getType();
 
-        // Player colors
+        // Player colors - dimmed if unit is done for the turn
+        const isDone = unit.playerId === 0 && this.isUnitDone(unit);  // Only show for player units
         const playerColors = {
             0: { main: '#4a90d9', dark: '#2d5a8a', light: '#7ab8f5' },  // Blue
             1: { main: '#d94a4a', dark: '#8a2d2d', light: '#f57a7a' }   // Red
         };
-        const colors = playerColors[unit.playerId] || playerColors[0];
+        let colors = playerColors[unit.playerId] || playerColors[0];
+
+        // If unit is done, use dimmed colors
+        if (isDone) {
+            colors = {
+                main: '#3a6090',
+                dark: '#2a4060',
+                light: '#5080b0'
+            };
+        }
 
         // Draw based on unit class
         switch (unitType.unitClass) {
@@ -63,9 +85,14 @@ class UnitRenderer {
         // Draw strength indicator
         this.drawStrength(center, size, unit.strength);
 
-        // Draw movement indicator if unit has moved
-        if (unit.movementRemaining < unitType.movement) {
+        // Draw movement indicator if unit has moved but not done
+        if (unit.movementRemaining < unitType.movement && !isDone) {
             this.drawMovedIndicator(center, size);
+        }
+
+        // Draw "done" indicator for player units that have finished their turn
+        if (isDone) {
+            this.drawDoneIndicator(center, size);
         }
     }
 
@@ -189,6 +216,32 @@ class UnitRenderer {
         this.ctx.beginPath();
         this.ctx.arc(x, y, size * 0.1, 0, Math.PI * 2);
         this.ctx.fill();
+    }
+
+    /**
+     * Draw indicator that unit has finished its turn (checkmark)
+     */
+    drawDoneIndicator(center, size) {
+        const x = center.x - size * 0.35;
+        const y = center.y - size * 0.35;
+        const checkSize = size * 0.12;
+
+        // Background circle
+        this.ctx.fillStyle = 'rgba(100, 100, 100, 0.8)';
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, checkSize, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Checkmark
+        this.ctx.strokeStyle = '#90EE90';
+        this.ctx.lineWidth = 2;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - checkSize * 0.5, y);
+        this.ctx.lineTo(x - checkSize * 0.1, y + checkSize * 0.4);
+        this.ctx.lineTo(x + checkSize * 0.5, y - checkSize * 0.4);
+        this.ctx.stroke();
     }
 
     /**

@@ -8,20 +8,21 @@
 </head>
 <body>
     <div id="game-container">
-        <div id="map-area">
-            <canvas id="game-canvas"></canvas>
-            <div id="info-panel">
-                <span id="hex-info">Hover over a hex</span>
+        <div id="main-area">
+            <div id="header">
+                <div id="game-title">Medieval Conquest</div>
+                <div id="level-display">Level 1: The First Battle</div>
+            </div>
+            <div id="map-area">
+                <canvas id="game-canvas"></canvas>
+                <div id="info-panel">
+                    <span id="hex-info">Hover over a hex</span>
+                </div>
             </div>
         </div>
         <div id="sidebar">
-            <div id="sidebar-title">Medieval Conquest</div>
             <div id="sidebar-buttons">
                 <button id="new-game-btn">New Game</button>
-                <button id="end-turn-btn">End Turn</button>
-                <button id="toggle-grid-btn">Toggle Grid</button>
-                <button id="toggle-coords-btn">Show Coords</button>
-                <button id="inspect-btn" title="Inspect Unit">🔍 Inspect</button>
             </div>
             <div id="sidebar-info">
                 <div class="info-row">
@@ -37,6 +38,10 @@
                     <span id="prestige-display">150</span>
                 </div>
             </div>
+            <div id="sidebar-actions">
+                <button id="inspect-btn" title="Inspect Unit">🔍 Inspect</button>
+                <button id="end-turn-btn">End Turn</button>
+            </div>
             <div id="sidebar-help">
                 <div class="help-title">Keyboard:</div>
                 <div class="help-item">G - Grid</div>
@@ -48,16 +53,44 @@
         </div>
     </div>
 
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="modal hidden">
+        <div class="modal-content confirm-modal">
+            <div class="modal-header" id="confirm-title">Confirm</div>
+            <div class="modal-body">
+                <p id="confirm-message">Are you sure?</p>
+            </div>
+            <div class="confirm-buttons">
+                <button id="confirm-yes-btn" class="modal-btn confirm-yes">Yes</button>
+                <button id="confirm-no-btn" class="modal-btn confirm-no">No</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Victory Modal -->
-    <div id="victory-modal" class="modal hidden">
+    <div id="victory-modal" class="modal hidden victory-modal">
         <div class="modal-content">
             <div class="modal-header">GLORIOUS VICTORY!</div>
             <div class="modal-body">
                 <p>The enemy strongholds have fallen!</p>
-                <p>Your banner flies over all three castles.</p>
+                <p>Your banner flies over the castle.</p>
+                <p id="victory-bonus-text" class="victory-bonus">Turns remaining: 0 (+0 prestige bonus!)</p>
                 <p class="modal-footer-text">The realm is yours, my liege!</p>
             </div>
             <button id="victory-ok-btn" class="modal-btn">Long Live the King!</button>
+        </div>
+    </div>
+
+    <!-- Defeat Modal -->
+    <div id="defeat-modal" class="modal hidden defeat-modal">
+        <div class="modal-content">
+            <div class="modal-header">DEFEAT!</div>
+            <div class="modal-body">
+                <p>Time has run out!</p>
+                <p>The enemy castles remain unconquered.</p>
+                <p class="modal-footer-text">Perhaps another strategy is needed...</p>
+            </div>
+            <button id="defeat-ok-btn" class="modal-btn defeat-btn">Try Again</button>
         </div>
     </div>
 
@@ -235,6 +268,8 @@
     <script src="js/units/unit.js"></script>
     <script src="js/units/rebuild.js"></script>
     <script src="js/core/map.js"></script>
+    <script src="js/levels/level1.js"></script>
+    <script src="js/levels/levelManager.js"></script>
     <script src="js/core/gameState.js"></script>
     <script src="js/rendering/hexRenderer.js"></script>
     <script src="js/rendering/edgeRenderer.js"></script>
