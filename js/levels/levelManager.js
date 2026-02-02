@@ -17,7 +17,11 @@ const LevelManager = {
      * Get a level by ID
      */
     getLevel(id) {
-        return this.levels[id] || null;
+        const level = this.levels[id] || null;
+        if (!level) {
+            console.warn(`Level ${id} not found. Registered levels:`, Object.keys(this.levels));
+        }
+        return level;
     },
 
     /**
@@ -293,6 +297,10 @@ const LevelManager = {
             const r = this.vRowToR(enemyDef.q, enemyDef.vRow);
             const hex = new Hex(enemyDef.q, r);
             const unit = new Unit(enemyDef.type, 1, hex);  // Player 1 = enemy
+            // Apply level-specific enemy starting strength if defined
+            if (level.enemyStartingStrength !== undefined) {
+                unit.strength = level.enemyStartingStrength;
+            }
             units.addUnit(unit);
         }
     },
@@ -310,9 +318,11 @@ const LevelManager = {
     }
 };
 
-// Register Level 1
-if (typeof Level1 !== 'undefined') {
-    LevelManager.register(Level1);
+// Register Level 1 (using window.Level1 since const is file-scoped)
+if (typeof window !== 'undefined' && window.Level1) {
+    LevelManager.register(window.Level1);
+} else {
+    console.error('Level1 not found! Make sure level1.js is loaded before levelManager.js');
 }
 
 // Make available globally

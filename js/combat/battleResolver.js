@@ -9,7 +9,7 @@ const BATTLE_CONFIG = {
     DAMAGE_RATIO_SENSITIVITY: 0.3,  // How much power ratio affects damage split
     MIN_DAMAGE_SHARE: 0.1,          // Minimum damage share (prevents 0 damage)
     MAX_DAMAGE_SHARE: 0.9,          // Maximum damage share (prevents total rout always)
-    DAMAGE_STD_DEV: 1.5,            // Standard deviation for damage variance
+    DAMAGE_STD_DEV: 1.25,           // Standard deviation for damage variance
     MIN_DAMAGE: 0,                  // Minimum damage (floor)
     MAX_DAMAGE: 10,                 // Maximum damage (unit max strength)
     ROUT_THRESHOLD: 3.0             // Power ratio for potential rout (10-0)
@@ -37,8 +37,8 @@ function gaussianRandom(mean = 0, stdDev = 1) {
 
 /**
  * Calculate combat power for an attacker
- * Formula: softAttack (or hardAttack) + effectiveStrength + initiative + experience
- * Strength is reduced by movement fatigue (20% per tier, max 2 tiers)
+ * Formula: softAttack (or hardAttack) + (strength/2) + initiative + experience
+ * Strength is halved, then reduced by movement fatigue (20% per tier, max 2 tiers)
  * Surprise attacks lose all initiative and additional 20% strength
  * River attacks (from river to non-river) lose all initiative and 30% strength
  * @param {Unit} attacker - The attacking unit
@@ -81,7 +81,8 @@ function calculateAttackerPower(attacker, defender, options = {}) {
     strengthMultiplier = Math.max(0.2, strengthMultiplier);
 
     // Apply penalties to strength component
-    const effectiveStrength = attacker.strength * strengthMultiplier;
+    // Strength is halved to reduce its dominance in combat calculations
+    const effectiveStrength = (attacker.strength / 2) * strengthMultiplier;
 
     // Initiative only applies to attacker (0 if surprised), experience applies to both
     return attackValue + effectiveStrength + effectiveInitiative + attacker.experience;
@@ -89,7 +90,8 @@ function calculateAttackerPower(attacker, defender, options = {}) {
 
 /**
  * Calculate combat power for a defender
- * Formula: groundDefense (or closeDefense) + strength + entrenchment + experience
+ * Formula: groundDefense (or closeDefense) + (strength/2) + entrenchment + experience
+ * Strength is halved to reduce its dominance in combat
  * Uses closeDefense in close terrain (woods, castle, mountain)
  * Uses groundDefense in open terrain (grass, hill, river)
  * @param {Unit} defender - The defending unit
@@ -102,7 +104,8 @@ function calculateDefenderPower(defender, closeTerrain = false) {
     // Use closeDefense in close terrain, groundDefense in open terrain
     const defenseValue = getDefenseValue(defenderType, closeTerrain);
 
-    return defenseValue + defender.strength + defender.entrenchment + defender.experience;
+    // Strength is halved to reduce its dominance in combat calculations
+    return defenseValue + (defender.strength / 2) + defender.entrenchment + defender.experience;
 }
 
 /**
@@ -196,9 +199,14 @@ function resolveBattle(attacker, defender, options = {}) {
     let defenderDamageRaw = applyDamageVariance(baseDefenderDamage);
     let attackerDamageRaw = applyDamageVariance(baseAttackerDamage);
 
-    // Ranged attacks: attacker takes no return fire
+    // Ranged attacks: attacker takes no return fire, damage scales with strength
     if (options.rangedAttack) {
         attackerDamageRaw = 0;
+        // Scale ranged damage by attacker's strength (half-scale reduction)
+        // Missing 60% strength = 30% damage penalty
+        const missingStrengthPercent = (10 - attackerStrengthBefore) / 10;
+        const strengthPenalty = missingStrengthPercent * 0.5;
+        defenderDamageRaw = defenderDamageRaw * (1 - strengthPenalty);
     }
 
     // Check for extreme mismatch (potential rout)

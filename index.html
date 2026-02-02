@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Medieval Conquest</title>
+    <title>Puddy General</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <div id="game-container">
         <div id="main-area">
             <div id="header">
-                <div id="game-title">Medieval Conquest</div>
+                <div id="game-title">Puddy General</div>
                 <div id="level-display">Level 1: The First Battle</div>
             </div>
             <div id="map-area">
@@ -23,10 +23,11 @@
         <div id="sidebar">
             <div id="sidebar-buttons">
                 <button id="new-game-btn">New Game</button>
+                <button id="rules-btn">Rules</button>
             </div>
             <div id="sidebar-info">
                 <div class="info-row">
-                    <span class="info-label">Turn:</span>
+                    <span class="info-label">Days:</span>
                     <span id="turn-display">1</span>
                 </div>
                 <div class="info-row">
@@ -40,14 +41,14 @@
             </div>
             <div id="sidebar-actions">
                 <button id="inspect-btn" title="Inspect Unit">🔍 Inspect</button>
-                <button id="end-turn-btn">End Turn</button>
+                <button id="end-turn-btn">End Day</button>
             </div>
             <div id="sidebar-help">
                 <div class="help-title">Keyboard:</div>
                 <div class="help-item">G - Grid</div>
                 <div class="help-item">C - Coords</div>
                 <div class="help-item">I - Inspect</div>
-                <div class="help-item">E - End Turn</div>
+                <div class="help-item">E - End Day</div>
                 <div class="help-item">ESC - Deselect</div>
             </div>
         </div>
@@ -91,6 +92,24 @@
                 <p class="modal-footer-text">Perhaps another strategy is needed...</p>
             </div>
             <button id="defeat-ok-btn" class="modal-btn defeat-btn">Try Again</button>
+        </div>
+    </div>
+
+    <!-- Rules Modal -->
+    <div id="rules-modal" class="modal hidden">
+        <div class="modal-content rules-modal">
+            <div class="modal-header">Rules</div>
+            <div class="modal-body rules-body">
+                <p>This is Puddy, a land of many baronies where the barons happily exploit their peasants. Your baron, Puddy von Puddy, has made you his general. Puddy von Puddy has great plans of conquering all the neighbor baronies, one by one.</p>
+                <p>For each barony you will have a set number of days to conquer all the castles. Should you fail to do so, the game is over. If you succeed, you will proceed to the next barony until you have won the entire kingdom and all the horses in it. If you finish conquering a barony early, you will be rewarded for it.</p>
+                <p class="rules-section-title">Some important details:</p>
+                <ul class="rules-list">
+                    <li>A unit can regain its full strength if it is outside of an enemy zone of control and you are willing to spend the gold to do so (by inspecting the unit). This will take one day.</li>
+                    <li>A ranged unit will defend nearby units if they are attacked.</li>
+                </ul>
+                <p class="rules-footer">Good luck!</p>
+            </div>
+            <button id="rules-ok-btn" class="modal-btn">Close</button>
         </div>
     </div>
 
@@ -257,6 +276,17 @@
                 </div>
             </div>
             <button id="battle-ok-btn" class="modal-btn">Continue</button>
+        </div>
+    </div>
+
+    <!-- Level Intro Modal -->
+    <div id="level-intro-modal" class="modal hidden">
+        <div class="modal-content level-intro-modal">
+            <div class="modal-header" id="level-intro-title">Level 1: Baron von Dunkhauzen</div>
+            <div class="modal-body level-intro-body">
+                <p id="level-intro-text"></p>
+            </div>
+            <button id="level-intro-ok-btn" class="modal-btn">To Battle!</button>
         </div>
     </div>
 

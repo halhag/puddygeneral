@@ -212,6 +212,8 @@ body {
     text-align: center;
     box-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
     max-width: 400px;
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .modal-header {
@@ -590,4 +592,66 @@ body {
 .victory-bonus {
     color: #ffd700;
     font-weight: bold;
+}
+
+/* Rules Modal Styles */
+.rules-modal {
+    max-width: 500px;
+}
+
+.rules-modal .modal-header {
+    color: #ffd700;
+}
+
+.rules-body {
+    text-align: left;
+}
+
+.rules-body p {
+    margin: 12px 0;
+    line-height: 1.6;
+}
+
+.rules-section-title {
+    color: #ffd700;
+    font-weight: bold;
+    margin-top: 20px !important;
+}
+
+.rules-list {
+    margin: 10px 0 10px 20px;
+    padding-left: 10px;
+}
+
+.rules-list li {
+    margin: 10px 0;
+    line-height: 1.5;
+    color: #e0e0e0;
+}
+
+.rules-footer {
+    color: #ffd700;
+    font-style: italic;
+    text-align: center;
+    margin-top: 20px !important;
+}
+
+/* Level Intro Modal Styles */
+.level-intro-modal {
+    max-width: 520px;
+}
+
+.level-intro-modal .modal-header {
+    color: #88ccff;
+    font-size: 24px;
+}
+
+.level-intro-body {
+    text-align: left;
+}
+
+.level-intro-body p {
+    margin: 12px 0;
+    line-height: 1.7;
+    white-space: pre-line;
 }

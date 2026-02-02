@@ -60,6 +60,7 @@ class GameState {
 
         // Get level definition
         const level = LevelManager.getLevel(levelId);
+        console.log(`Loading level ${levelId}:`, level ? level.name : 'NOT FOUND');
 
         if (level) {
             // Create map from level definition (fixed, not random)
@@ -89,62 +90,9 @@ class GameState {
                     unit.updateEntrenchment(cell.terrain);
                 }
             }
-        } else {
-            // Fallback to old random map if no level found
-            state.map = createDefaultMap();
-            state.units = new UnitManager();
-            state.phase = GamePhase.PLACEMENT;
-            state.unitsToPlace = 3;
-            state.capturedCastles = [];
-            state.placeEnemyUnits();
         }
 
         return state;
-    }
-
-    /**
-     * Place enemy units in their starting castles
-     * Enemy castles are on the left side of the map
-     */
-    placeEnemyUnits() {
-        // Enemy castle positions (q, vRow) - convert to axial
-        const enemyCastles = [
-            { q: 2, vRow: 2 },      // Top-left castle
-            { q: 10, vRow: 7 },     // Center castle
-            { q: 3, vRow: 13 }      // Bottom-left castle
-        ];
-
-        // Add an enemy near the river for testing river attacks
-        // Position q=6, vRow=8 is adjacent to river at q=7, vRow=8
-        const riverTestPos = { q: 6, vRow: 8 };
-        const riverTestR = riverTestPos.vRow - Math.floor(riverTestPos.q / 2);
-        const riverTestHex = new Hex(riverTestPos.q, riverTestR);
-        const riverTestUnit = new Unit('infantry', 1, riverTestHex);
-        this.units.addUnit(riverTestUnit);
-
-        // Add enemy trebuchet near center castle for testing defensive fire
-        // Position adjacent to center castle (q=11, vRow=7)
-        const trebuchetPos = { q: 11, vRow: 7 };
-        const trebuchetR = trebuchetPos.vRow - Math.floor(trebuchetPos.q / 2);
-        const trebuchetHex = new Hex(trebuchetPos.q, trebuchetR);
-        const trebuchetUnit = new Unit('trebuchet', 1, trebuchetHex);
-        this.units.addUnit(trebuchetUnit);
-
-        for (const pos of enemyCastles) {
-            // Convert visual row to axial r: r = vRow - floor(q/2)
-            const r = pos.vRow - Math.floor(pos.q / 2);
-            const hex = new Hex(pos.q, r);
-
-            // Create enemy infantry (player 1 = enemy/red)
-            const unit = new Unit('infantry', 1, hex);
-            this.units.addUnit(unit);
-
-            // Set initial entrenchment based on terrain (castle = 3 minimum)
-            const cell = this.map.getCell(hex);
-            if (cell) {
-                unit.updateEntrenchment(cell.terrain);
-            }
-        }
     }
 
     // Serialize for LocalStorage
@@ -567,6 +515,12 @@ class GameState {
 
         // Update visibility after movement
         this.updateVisibility();
+
+        // If unit is now in enemy ZoC, they can't move further
+        // Zero out remaining movement so they show as "done" (checkmark, not yellow dot)
+        if (this.isInAnyEnemyZOCIncludingHidden(actualDestination)) {
+            unit.movementRemaining = 0;
+        }
 
         // NOTE: Moving into ZOC does NOT trigger battle - only clicking on enemy hex does
         // Unit simply stops in ZOC (handled by getValidMovementHexes preventing further movement)

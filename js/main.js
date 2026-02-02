@@ -45,7 +45,7 @@ class Game {
         this.gameState = GameStorage.loadCurrentGame();
 
         if (!this.gameState) {
-            this.gameState = GameState.create('Medieval Conquest');
+            this.gameState = GameState.create('Puddy General');
             GameStorage.saveGame(this.gameState);
         }
 
@@ -99,9 +99,27 @@ class Game {
                 this.showConfirmDialog(
                     'New Game',
                     'Start a new game? Current progress will be lost.',
-                    () => this.newGame('Medieval Conquest')
+                    () => this.newGame('Puddy General')
                 );
             });
+        }
+
+        // Rules button
+        const rulesBtn = document.getElementById('rules-btn');
+        if (rulesBtn) {
+            rulesBtn.addEventListener('click', () => this.showRulesModal());
+        }
+
+        // Rules modal close button
+        const rulesOkBtn = document.getElementById('rules-ok-btn');
+        if (rulesOkBtn) {
+            rulesOkBtn.addEventListener('click', () => this.hideRulesModal());
+        }
+
+        // Level intro modal close button
+        const levelIntroOkBtn = document.getElementById('level-intro-ok-btn');
+        if (levelIntroOkBtn) {
+            levelIntroOkBtn.addEventListener('click', () => this.hideLevelIntroModal());
         }
 
         const endTurnBtn = document.getElementById('end-turn-btn');
@@ -109,8 +127,8 @@ class Game {
             endTurnBtn.addEventListener('click', () => {
                 if (this.gameState.phase === GamePhase.MOVEMENT) {
                     this.showConfirmDialog(
-                        'End Turn',
-                        'End your turn and let the enemy move?',
+                        'End Day',
+                        'End your day and let the enemy move?',
                         () => this.endTurn()
                     );
                 }
@@ -624,6 +642,59 @@ class Game {
      */
     hideInspectModal() {
         const modal = document.getElementById('inspect-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+
+    /**
+     * Show the rules modal
+     */
+    showRulesModal() {
+        const modal = document.getElementById('rules-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * Hide the rules modal
+     */
+    hideRulesModal() {
+        const modal = document.getElementById('rules-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+
+    /**
+     * Show the level intro modal with story text
+     * @param {Object} level - The level configuration object
+     */
+    showLevelIntroModal(level) {
+        const modal = document.getElementById('level-intro-modal');
+        if (!modal || !level) return;
+
+        // Set the title
+        const titleEl = document.getElementById('level-intro-title');
+        if (titleEl) {
+            titleEl.textContent = `Level ${level.id}: ${level.name}`;
+        }
+
+        // Set the intro text
+        const textEl = document.getElementById('level-intro-text');
+        if (textEl) {
+            textEl.textContent = level.introText || level.description || '';
+        }
+
+        modal.classList.remove('hidden');
+    }
+
+    /**
+     * Hide the level intro modal
+     */
+    hideLevelIntroModal() {
+        const modal = document.getElementById('level-intro-modal');
         if (modal) {
             modal.classList.add('hidden');
         }
@@ -1352,7 +1423,7 @@ class Game {
     }
 
     // Create a new game
-    newGame(name = 'Medieval Conquest', levelId = 1) {
+    newGame(name = 'Puddy General', levelId = 1) {
         this.gameState = GameState.create(name, levelId);
         GameStorage.saveGame(this.gameState);
         this.gameState.updateVisibility();
@@ -1360,11 +1431,16 @@ class Game {
         this.render();
         this.logGameState();
 
-        // Show level info
+        // Show level intro modal if level has intro text
         const level = LevelManager.getLevel(levelId);
         if (level) {
             console.log(`Starting Level ${level.id}: ${level.name}`);
             console.log(level.description);
+
+            // Show intro modal if level has introText
+            if (level.introText) {
+                this.showLevelIntroModal(level);
+            }
         }
     }
 }
@@ -1378,7 +1454,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.newGame = (name, levelId) => game.newGame(name, levelId);
     window.save = () => game.save();
 
-    console.log('Medieval Conquest loaded!');
+    console.log('Puddy General loaded!');
     console.log('Keyboard shortcuts:');
     console.log('  G - Toggle grid');
     console.log('  F - Toggle fog of war');

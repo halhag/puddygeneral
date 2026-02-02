@@ -8,10 +8,20 @@ const Level1 = {
     name: "Baron von Dunkhauzen",
     description: "Capture the enemy castle to secure the region.",
 
+    // Story intro shown when level starts
+    introText: `Your baron, Puddy von Puddy, has left you in charge of the invasion of baron von Dunkhauzen's fiefdom.
+
+Baron von Dunkhauzen likes to paint ducks and import silk clothed chairs from China. He has given orders to his army to stand and fight to the last man, while taking a warm bath himself.
+
+You will have to take his castle in 15 days, before the neighbor barons have time to react. The faster you can do it, the better for our next invasion!
+
+Now off you go and invade!`,
+
     // Victory/defeat conditions
     castlesToCapture: 1,  // Number of enemy castles player must capture to win
     turnLimit: 15,        // Turns to complete the mission (counts down)
     earlyVictoryBonus: 20, // Prestige per turn remaining on victory
+    enemyStartingStrength: 8, // Enemy units start weakened (default is 10)
 
     // Player setup
     playerUnitsToPlace: 4,  // 3 infantry + 1 trebuchet
