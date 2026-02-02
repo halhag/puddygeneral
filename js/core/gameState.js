@@ -30,6 +30,7 @@ class GameState {
         this.unitsToPlace = 3;          // Units remaining to place
         this.capturedCastles = [];      // Array of captured castle hex keys
         this.totalCastles = 3;          // Castles needed to win (enemy castles)
+        this.prestige = 150;            // Currency for rebuilding units
         this.settings = {
             fogOfWar: true,     // Fog of war is now ON by default
             showGrid: true,
@@ -132,6 +133,7 @@ class GameState {
             unitsToPlace: this.unitsToPlace,
             capturedCastles: this.capturedCastles,
             totalCastles: this.totalCastles,
+            prestige: this.prestige,
             settings: this.settings
         };
     }
@@ -155,6 +157,7 @@ class GameState {
         state.unitsToPlace = data.unitsToPlace ?? 0;
         state.capturedCastles = data.capturedCastles || [];
         state.totalCastles = data.totalCastles ?? 3;
+        state.prestige = data.prestige ?? 150;
         state.settings = { ...state.settings, ...data.settings };
         return state;
     }
@@ -545,7 +548,10 @@ class GameState {
         const key = hex.key;
         if (!this.capturedCastles.includes(key)) {
             this.capturedCastles.push(key);
-            console.log(`Castle captured! (${this.capturedCastles.length}/${this.totalCastles})`);
+
+            // Gain prestige for capturing castle
+            this.prestige += 50;
+            console.log(`Castle captured! +50 prestige (${this.capturedCastles.length}/${this.totalCastles})`);
 
             // Check victory
             if (this.capturedCastles.length >= this.totalCastles) {

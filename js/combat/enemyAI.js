@@ -119,8 +119,15 @@ const EnemyAI = {
         defender.takeDamage(result.defenderDamage);
 
         // Experience gain for surviving units
+        // Player units (defender) gain prestige when they survive and gain exp
+        let defenderExpGain = 0;
         if (!result.defenderDestroyed) {
-            defender.gainExperience(result.defenderDamage);
+            defenderExpGain = defender.gainExperience(result.defenderDamage);
+            // Player gains prestige from surviving (looting fallen enemies)
+            if (defender.playerId === 0) {
+                const prestigeGain = RebuildSystem.calculateBattlePrestige(defenderExpGain, false);
+                gameState.prestige += prestigeGain;
+            }
         }
         if (!result.attackerDestroyed) {
             attacker.gainExperience(0); // Minimal exp for ranged (no risk)
@@ -216,11 +223,18 @@ const EnemyAI = {
         defender.takeDamage(result.defenderDamage);
 
         // Experience gain for surviving units
+        // Player units (defender) gain prestige when they survive and gain exp
         if (!result.attackerDestroyed) {
             attacker.gainExperience(result.attackerDamage);
         }
+        let defenderExpGain = 0;
         if (!result.defenderDestroyed) {
-            defender.gainExperience(result.defenderDamage);
+            defenderExpGain = defender.gainExperience(result.defenderDamage);
+            // Player gains prestige from surviving melee (looting)
+            if (defender.playerId === 0) {
+                const prestigeGain = RebuildSystem.calculateBattlePrestige(defenderExpGain, false);
+                gameState.prestige += prestigeGain;
+            }
         }
 
         // Reduce defender entrenchment

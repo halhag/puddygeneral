@@ -32,6 +32,10 @@
                     <span class="info-label">Castles:</span>
                     <span id="castle-display">0/3</span>
                 </div>
+                <div class="info-row">
+                    <span class="info-label">Prestige:</span>
+                    <span id="prestige-display">150</span>
+                </div>
             </div>
             <div id="sidebar-help">
                 <div class="help-title">Keyboard:</div>
@@ -126,6 +130,26 @@
                 <div class="inspect-description" id="inspect-description">
                     Basic foot soldiers armed with spears and swords.
                 </div>
+                <!-- Rebuild Section (shown only for player's wounded units) -->
+                <div id="inspect-rebuild-section" class="inspect-section hidden">
+                    <div class="inspect-section-title">Rebuild Unit</div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Missing Strength:</span>
+                        <span id="inspect-missing-strength">0</span>
+                    </div>
+                    <div class="rebuild-buttons">
+                        <button id="rebuild-with-exp-btn" class="rebuild-btn">
+                            Rebuild (Keep Exp)<br>
+                            <span class="rebuild-cost" id="rebuild-cost-exp">Cost: 0</span>
+                        </button>
+                        <button id="rebuild-cheap-btn" class="rebuild-btn">
+                            Rebuild (Cheap)<br>
+                            <span class="rebuild-cost" id="rebuild-cost-cheap">Cost: 0</span><br>
+                            <span class="rebuild-exp-loss" id="rebuild-exp-loss">Exp loss: 0</span>
+                        </button>
+                    </div>
+                    <div id="rebuild-status" class="rebuild-status"></div>
+                </div>
             </div>
             <button id="inspect-ok-btn" class="modal-btn">Close</button>
         </div>
@@ -209,6 +233,7 @@
     <script src="js/terrain/terrainTypes.js"></script>
     <script src="js/units/unitTypes.js"></script>
     <script src="js/units/unit.js"></script>
+    <script src="js/units/rebuild.js"></script>
     <script src="js/core/map.js"></script>
     <script src="js/core/gameState.js"></script>
     <script src="js/rendering/hexRenderer.js"></script>

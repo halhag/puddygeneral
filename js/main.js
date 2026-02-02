@@ -135,6 +135,17 @@ class Game {
                 this.hideInspectModal();
             });
         }
+
+        // Rebuild buttons in inspect modal
+        const rebuildExpBtn = document.getElementById('rebuild-with-exp-btn');
+        if (rebuildExpBtn) {
+            rebuildExpBtn.addEventListener('click', () => this.handleRebuild(true));
+        }
+
+        const rebuildCheapBtn = document.getElementById('rebuild-cheap-btn');
+        if (rebuildCheapBtn) {
+            rebuildCheapBtn.addEventListener('click', () => this.handleRebuild(false));
+        }
     }
 
     handleMouseMove(event) {
@@ -345,6 +356,11 @@ class Game {
         if (castleDisplay) {
             castleDisplay.textContent = `${this.gameState.capturedCastles.length}/${this.gameState.totalCastles}`;
         }
+
+        const prestigeDisplay = document.getElementById('prestige-display');
+        if (prestigeDisplay) {
+            prestigeDisplay.textContent = this.gameState.prestige;
+        }
     }
 
     showVictory() {
@@ -384,6 +400,9 @@ class Game {
         const modal = document.getElementById('inspect-modal');
         if (!modal) return;
 
+        // Store reference to inspected unit for rebuild actions
+        this.inspectedUnit = unit;
+
         const unitType = unit.getType();
 
         // Populate unit name
@@ -414,6 +433,52 @@ class Game {
         // Description
         document.getElementById('inspect-description').textContent = unitType.description;
 
+        // Rebuild section - show only for player's wounded units
+        const rebuildSection = document.getElementById('inspect-rebuild-section');
+        const rebuildStatus = document.getElementById('rebuild-status');
+
+        if (rebuildSection) {
+            const canRebuild = RebuildSystem.canRebuild(this.gameState, unit);
+            const isPlayerUnit = unit.playerId === this.gameState.currentPlayer;
+            const isWounded = unit.strength < 10;
+
+            if (isPlayerUnit && isWounded) {
+                rebuildSection.classList.remove('hidden');
+
+                const costs = RebuildSystem.getCosts(unit);
+
+                document.getElementById('inspect-missing-strength').textContent = costs.missingStrength;
+                document.getElementById('rebuild-cost-exp').textContent = `Cost: ${costs.withExp}`;
+                document.getElementById('rebuild-cost-cheap').textContent = `Cost: ${costs.cheap}`;
+                document.getElementById('rebuild-exp-loss').textContent = `Exp loss: ${costs.expLoss.toFixed(2)}`;
+
+                const expBtn = document.getElementById('rebuild-with-exp-btn');
+                const cheapBtn = document.getElementById('rebuild-cheap-btn');
+
+                // Enable/disable buttons based on conditions
+                if (!canRebuild) {
+                    expBtn.disabled = true;
+                    cheapBtn.disabled = true;
+                    const reason = RebuildSystem.getCannotRebuildReason(this.gameState, unit);
+                    rebuildStatus.textContent = reason || '';
+                    rebuildStatus.className = 'rebuild-status error';
+                } else {
+                    expBtn.disabled = this.gameState.prestige < costs.withExp;
+                    cheapBtn.disabled = this.gameState.prestige < costs.cheap;
+
+                    if (this.gameState.prestige < costs.cheap) {
+                        rebuildStatus.textContent = 'Insufficient prestige';
+                        rebuildStatus.className = 'rebuild-status error';
+                    } else {
+                        rebuildStatus.textContent = '';
+                        rebuildStatus.className = 'rebuild-status';
+                    }
+                }
+            } else {
+                rebuildSection.classList.add('hidden');
+            }
+        }
+
         modal.classList.remove('hidden');
     }
 
@@ -424,6 +489,39 @@ class Game {
         const modal = document.getElementById('inspect-modal');
         if (modal) {
             modal.classList.add('hidden');
+        }
+    }
+
+    /**
+     * Handle rebuild button click
+     * @param {boolean} keepExperience - Whether to keep experience (full price)
+     */
+    handleRebuild(keepExperience) {
+        if (!this.inspectedUnit) return;
+
+        const result = RebuildSystem.rebuild(this.gameState, this.inspectedUnit, keepExperience);
+
+        if (result.success) {
+            // Refresh the modal to show updated stats
+            this.showInspectModal(this.inspectedUnit);
+
+            // Update displays
+            this.updateTurnDisplay();
+            this.updateHighlights();
+            this.render();
+
+            const rebuildStatus = document.getElementById('rebuild-status');
+            if (rebuildStatus) {
+                rebuildStatus.textContent = `Rebuilt! Cost: ${result.cost}` +
+                    (result.expLost > 0 ? `, Exp lost: ${result.expLost.toFixed(2)}` : '');
+                rebuildStatus.className = 'rebuild-status success';
+            }
+        } else if (result.insufficientFunds) {
+            const rebuildStatus = document.getElementById('rebuild-status');
+            if (rebuildStatus) {
+                rebuildStatus.textContent = 'Insufficient prestige!';
+                rebuildStatus.className = 'rebuild-status error';
+            }
         }
     }
 
@@ -469,6 +567,13 @@ class Game {
         }
         if (!result.defenderDestroyed) {
             defenderExpGain = defender.gainExperience(result.defenderDamage);
+        }
+
+        // Add prestige from looting (melee attackers who survive and dealt damage)
+        let attackerPrestigeGain = 0;
+        if (!result.attackerDestroyed && attackerExpGain > 0) {
+            attackerPrestigeGain = RebuildSystem.calculateBattlePrestige(attackerExpGain, false);
+            this.gameState.prestige += attackerPrestigeGain;
         }
 
         // Reduce defender entrenchment after being attacked
@@ -597,6 +702,7 @@ class Game {
                     // Update visibility after battle
                     this.gameState.updateVisibility();
 
+                    this.updateTurnDisplay();
                     this.render();
                 };
             }
@@ -708,6 +814,7 @@ class Game {
                     }
 
                     this.gameState.updateVisibility();
+                    this.updateTurnDisplay();
                     this.render();
                 };
             }
@@ -773,9 +880,13 @@ class Game {
         // Apply damage to target
         target.takeDamage(result.defenderDamage);
 
-        // Experience for target if it survives
+        // Experience for target if it survives (they can loot the fallen)
+        let targetExpGain = 0;
         if (!result.defenderDestroyed) {
-            target.gainExperience(result.defenderDamage);
+            targetExpGain = target.gainExperience(result.defenderDamage);
+            // Defender gains prestige from surviving defensive fire (looting)
+            const prestigeGain = RebuildSystem.calculateBattlePrestige(targetExpGain, false);
+            this.gameState.prestige += prestigeGain;
         }
 
         // Reduce entrenchment
@@ -826,6 +937,7 @@ class Game {
                 okBtn.onclick = () => {
                     modal.classList.add('hidden');
                     this.gameState.units.removeDestroyed();
+                    this.updateTurnDisplay();
                     this.render();
                     // Continue to next artillery or main battle
                     if (onClose) onClose();
