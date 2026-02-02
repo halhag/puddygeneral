@@ -890,9 +890,128 @@ class Game {
 
     endTurn() {
         this.gameState.endTurn();
-        this.updateHighlights();
-        this.render();
-        console.log(`Turn ${this.gameState.turn} begins`);
+
+        // Execute enemy AI actions
+        const enemyActions = EnemyAI.executeEnemyTurn(this.gameState);
+
+        // Show enemy action results
+        if (enemyActions.length > 0) {
+            this.showEnemyActionsSequence(enemyActions, 0);
+        } else {
+            this.updateHighlights();
+            this.render();
+            console.log(`Turn ${this.gameState.turn} begins`);
+        }
+    }
+
+    /**
+     * Show enemy actions one by one with modals
+     * @param {Array} actions - Array of enemy action results
+     * @param {number} index - Current action index
+     */
+    showEnemyActionsSequence(actions, index) {
+        if (index >= actions.length) {
+            // All actions shown, continue game
+            this.updateHighlights();
+            this.render();
+            console.log(`Turn ${this.gameState.turn} begins`);
+            return;
+        }
+
+        const action = actions[index];
+        this.showEnemyActionModal(action, () => {
+            // Show next action after modal is closed
+            this.showEnemyActionsSequence(actions, index + 1);
+        });
+    }
+
+    /**
+     * Show a modal for an enemy action
+     * @param {Object} action - The enemy action result
+     * @param {Function} onClose - Callback when modal is closed
+     */
+    showEnemyActionModal(action, onClose) {
+        const { attacker, defender, result, type } = action;
+
+        // Log to console
+        const actionType = type === 'ranged_attack' ? 'fires at' : 'attacks';
+        console.log('=================================');
+        console.log(`   ENEMY: ${attacker.getName()} ${actionType} ${defender.getName()}`);
+        console.log(`   Power: ${result.attackerPower.toFixed(1)} vs ${result.defenderPower.toFixed(1)}`);
+        console.log(`   Result: ${result.attackerStrengthBefore} -> ${result.attackerStrengthAfter} vs ${result.defenderStrengthBefore} -> ${result.defenderStrengthAfter}`);
+        console.log('=================================');
+
+        // Use the battle modal
+        const modal = document.getElementById('battle-modal');
+        if (modal) {
+            // Update attacker info (enemy)
+            document.getElementById('battle-attacker-name').textContent = `Enemy ${attacker.getName()}`;
+            document.getElementById('battle-attacker-before').textContent = result.attackerStrengthBefore;
+            document.getElementById('battle-attacker-after').textContent = result.attackerStrengthAfter;
+            document.getElementById('battle-attacker-damage').textContent =
+                result.attackerDamage > 0 ? `-${result.attackerDamage}` : '0';
+
+            // Update defender info (player)
+            document.getElementById('battle-defender-name').textContent = defender.getName();
+            document.getElementById('battle-defender-before').textContent = result.defenderStrengthBefore;
+            document.getElementById('battle-defender-after').textContent = result.defenderStrengthAfter;
+            document.getElementById('battle-defender-damage').textContent =
+                result.defenderDamage > 0 ? `-${result.defenderDamage}` : '0';
+
+            // Update status message
+            let status = '';
+            if (result.attackerDestroyed && result.defenderDestroyed) {
+                status = 'Mutual destruction!';
+            } else if (result.attackerDestroyed) {
+                status = `Enemy ${attacker.getName()} destroyed!`;
+            } else if (result.defenderDestroyed) {
+                status = `Your ${defender.getName()} destroyed!`;
+            } else {
+                status = 'Both units survive.';
+            }
+            document.getElementById('battle-status').textContent = status;
+
+            // Apply destroyed styling
+            const attackerAfter = document.getElementById('battle-attacker-after');
+            const defenderAfter = document.getElementById('battle-defender-after');
+            attackerAfter.classList.toggle('unit-destroyed', result.attackerDestroyed);
+            defenderAfter.classList.toggle('unit-destroyed', result.defenderDestroyed);
+
+            // Update battle details
+            document.getElementById('battle-power-info').textContent =
+                `${result.attackerPower.toFixed(1)} vs ${result.defenderPower.toFixed(1)} (ratio: ${result.powerRatio.toFixed(2)})`;
+            document.getElementById('battle-terrain-info').textContent = type === 'ranged_attack' ? 'Ranged Attack' : 'Melee Attack';
+            document.getElementById('battle-entrench-info').textContent = 'Enemy Turn';
+            document.getElementById('battle-exp-info').textContent = '-';
+
+            // Handle surprise/river/fatigue info
+            const surpriseInfo = document.getElementById('battle-surprise-info');
+            const riverInfo = document.getElementById('battle-river-info');
+            const fatigueInfo = document.getElementById('battle-fatigue-info');
+            const rawDamage = document.getElementById('battle-raw-damage');
+
+            if (surpriseInfo) surpriseInfo.textContent = 'No';
+            if (riverInfo) riverInfo.textContent = 'No';
+            if (fatigueInfo) fatigueInfo.textContent = '0%';
+            if (rawDamage) rawDamage.textContent = `Atk: ${result.attackerDamageRaw.toFixed(1)}, Def: ${result.defenderDamageRaw.toFixed(1)}`;
+
+            modal.classList.remove('hidden');
+
+            // Re-render to show updated unit states
+            this.render();
+
+            // Set up close handler
+            const okBtn = document.getElementById('battle-ok-btn');
+            const closeHandler = () => {
+                modal.classList.add('hidden');
+                okBtn.removeEventListener('click', closeHandler);
+                onClose();
+            };
+            okBtn.addEventListener('click', closeHandler);
+        } else {
+            // No modal, just continue
+            onClose();
+        }
     }
 
     updateInfoPanel(hex) {
