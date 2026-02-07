@@ -24,6 +24,7 @@
             <div id="sidebar-buttons">
                 <button id="new-game-btn">New Game</button>
                 <button id="rules-btn">Rules</button>
+                <button id="test-level2-btn" style="background:linear-gradient(180deg,#7a5a2a 0%,#4a3a1a 100%);border-color:#aa8a4a;">Level 2</button>
             </div>
             <div id="sidebar-info">
                 <div class="info-row">
@@ -328,6 +329,17 @@
                             <button class="marketplace-buy-btn" id="buy-trebuchet-btn">Purchase</button>
                         </div>
                     </div>
+                    <div class="marketplace-item" id="marketplace-cavalry">
+                        <div class="item-header">
+                            <span class="item-name">Knights</span>
+                            <span class="item-cost">Cost: <span class="cost-value">120</span></span>
+                        </div>
+                        <div class="item-description">Heavily armored mounted knights. Devastating charge on open ground but vulnerable in close terrain.</div>
+                        <div class="item-actions">
+                            <button class="marketplace-inspect-btn" id="inspect-cavalry-btn" title="View Details">🔍</button>
+                            <button class="marketplace-buy-btn" id="buy-cavalry-btn">Purchase</button>
+                        </div>
+                    </div>
                 </div>
             </div>
             <button id="marketplace-done-btn" class="modal-btn">Continue to Battle</button>
@@ -343,6 +355,7 @@
     <script src="js/units/rebuild.js"></script>
     <script src="js/core/map.js"></script>
     <script src="js/levels/level1.js"></script>
+    <script src="js/levels/level2.js"></script>
     <script src="js/levels/levelManager.js"></script>
     <script src="js/core/gameState.js"></script>
     <script src="js/rendering/hexRenderer.js"></script>

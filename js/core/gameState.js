@@ -31,6 +31,7 @@ class GameState {
         this.unitsToPlace = 3;          // Units remaining to place
         this.unitTypesToPlace = [];     // Array of unit types to place (e.g., ['infantry', 'infantry', 'trebuchet'])
         this.capturedCastles = [];      // Array of captured castle hex keys
+        this.enemyCastleKeys = [];     // Hex keys of enemy castles (only these count for victory)
         this.totalCastles = 3;          // Castles needed to win (enemy castles)
         this.turnLimit = 15;            // Total turns allowed (counts down)
         this.turnsRemaining = 15;       // Turns remaining (starts at turnLimit)
@@ -77,6 +78,12 @@ class GameState {
             state.prestige = level.playerStartingPrestige;
             state.capturedCastles = [];
 
+            // Store enemy castle hex keys so we only count those for victory
+            state.enemyCastleKeys = level.castles.enemy.map(pos => {
+                const r = LevelManager.vRowToR(pos.q, pos.vRow);
+                return new Hex(pos.q, r).key;
+            });
+
             // Place enemy units from level definition
             LevelManager.placeEnemyUnits(state.units, level);
 
@@ -115,6 +122,7 @@ class GameState {
             unitsToPlace: this.unitsToPlace,
             unitTypesToPlace: this.unitTypesToPlace,
             capturedCastles: this.capturedCastles,
+            enemyCastleKeys: this.enemyCastleKeys,
             totalCastles: this.totalCastles,
             turnLimit: this.turnLimit,
             turnsRemaining: this.turnsRemaining,
@@ -143,6 +151,7 @@ class GameState {
         state.unitsToPlace = data.unitsToPlace ?? 0;
         state.unitTypesToPlace = data.unitTypesToPlace || [];
         state.capturedCastles = data.capturedCastles || [];
+        state.enemyCastleKeys = data.enemyCastleKeys || [];
         state.totalCastles = data.totalCastles ?? 3;
         state.turnLimit = data.turnLimit ?? 15;
         state.turnsRemaining = data.turnsRemaining ?? data.turnLimit ?? 15;
@@ -634,6 +643,9 @@ class GameState {
         if (!cell || cell.terrain !== TerrainType.CASTLE) return;
 
         const key = hex.key;
+        // Only count enemy castles toward victory
+        if (!this.enemyCastleKeys.includes(key)) return;
+
         if (!this.capturedCastles.includes(key)) {
             this.capturedCastles.push(key);
 

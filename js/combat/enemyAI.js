@@ -20,7 +20,11 @@ const EnemyAI = {
         const trebuchetActions = this.executeTrebuchetAttacks(gameState, enemyUnits);
         actions.push(...trebuchetActions);
 
-        // Rule 2: Enemy Men-at-Arms attack adjacent player trebuchets
+        // Rule 2: Enemy cavalry charges spotted player units
+        const cavalryActions = this.executeCavalryCharges(gameState, enemyUnits);
+        actions.push(...cavalryActions);
+
+        // Rule 3: Enemy Men-at-Arms attack adjacent player trebuchets
         const infantryActions = this.executeInfantryAttacks(gameState, enemyUnits);
         actions.push(...infantryActions);
 
@@ -201,10 +205,163 @@ const EnemyAI = {
     },
 
     /**
+     * Execute cavalry charges toward spotted player units
+     * Cavalry charges if ANY enemy unit spots a player unit.
+     * Cavalry will not move into river hexes, but will attack a unit in the river.
+     * @param {GameState} gameState - The current game state
+     * @param {Array<Unit>} enemyUnits - All enemy units
+     * @returns {Array} Array of action results
+     */
+    executeCavalryCharges(gameState, enemyUnits) {
+        const actions = [];
+
+        // Find all player units spotted by ANY enemy unit
+        const spottedPlayerHexKeys = new Set();
+        for (const unit of enemyUnits) {
+            if (unit.strength <= 0) continue;
+            const spotting = unit.getType().spotting;
+            const visibleHexes = gameState.getHexesInRange(unit.hex, spotting);
+            for (const hex of visibleHexes) {
+                const target = gameState.units.getUnitAt(hex);
+                if (target && target.playerId === 0 && target.strength > 0) {
+                    spottedPlayerHexKeys.add(hex.key);
+                }
+            }
+        }
+
+        if (spottedPlayerHexKeys.size === 0) return actions;
+
+        // Get cavalry units
+        const cavalryUnits = enemyUnits.filter(unit =>
+            unit.typeId === 'cavalry' &&
+            unit.strength > 0
+        );
+
+        for (const cav of cavalryUnits) {
+            // Find the closest spotted player unit
+            const target = this.findCavalryTarget(gameState, cav, spottedPlayerHexKeys);
+            if (!target) continue;
+
+            // Check if already adjacent — attack immediately
+            const dist = cav.hex.distanceTo(target.hex);
+            if (dist === 1) {
+                const result = this.executeMeleeAttack(gameState, cav, target);
+                actions.push({
+                    type: 'melee_attack',
+                    attacker: cav,
+                    defender: target,
+                    result: result
+                });
+                continue;
+            }
+
+            // Move toward target (avoiding river), then attack if adjacent
+            this.moveCavalryToward(gameState, cav, target.hex);
+            if (cav.strength > 0) {
+                // Check if now adjacent to target (and target still alive)
+                const newDist = cav.hex.distanceTo(target.hex);
+                if (newDist === 1 && target.strength > 0) {
+                    const result = this.executeMeleeAttack(gameState, cav, target);
+                    actions.push({
+                        type: 'melee_attack',
+                        attacker: cav,
+                        defender: target,
+                        result: result
+                    });
+                }
+            }
+        }
+
+        return actions;
+    },
+
+    /**
+     * Find the closest spotted player unit for cavalry to charge
+     * @param {GameState} gameState - The current game state
+     * @param {Unit} cavalry - The cavalry unit
+     * @param {Set} spottedPlayerHexKeys - Set of hex keys with spotted player units
+     * @returns {Unit|null} Target unit or null
+     */
+    findCavalryTarget(gameState, cavalry, spottedPlayerHexKeys) {
+        let bestTarget = null;
+        let bestDist = Infinity;
+
+        const allPlayerUnits = gameState.units.getPlayerUnits(0);
+        for (const pu of allPlayerUnits) {
+            if (pu.strength > 0 && spottedPlayerHexKeys.has(pu.hex.key)) {
+                const dist = cavalry.hex.distanceTo(pu.hex);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestTarget = pu;
+                }
+            }
+        }
+
+        return bestTarget;
+    },
+
+    /**
+     * Move cavalry toward a target hex, avoiding river hexes.
+     * Uses greedy step-by-step movement up to the unit's movement points.
+     * @param {GameState} gameState - The current game state
+     * @param {Unit} cavalry - The cavalry unit
+     * @param {Hex} targetHex - The hex to move toward
+     */
+    moveCavalryToward(gameState, cavalry, targetHex) {
+        const unitType = cavalry.getType();
+        let movementLeft = unitType.movement;
+
+        while (movementLeft > 0) {
+            let bestNeighbor = null;
+            let bestDist = cavalry.hex.distanceTo(targetHex);
+            let bestCost = Infinity;
+
+            for (let dir = 0; dir < 6; dir++) {
+                const neighbor = cavalry.hex.neighbor(dir);
+                if (!gameState.map.hasCell(neighbor)) continue;
+
+                const cell = gameState.map.getCell(neighbor);
+                if (!cell) continue;
+
+                // Never move into river, mountain, or water
+                if (cell.terrain === TerrainType.RIVER ||
+                    cell.terrain === TerrainType.MOUNTAIN ||
+                    cell.terrain === TerrainType.WATER) continue;
+
+                // Check movement cost
+                const currentCell = gameState.map.getCell(cavalry.hex);
+                const edgeFeature = currentCell.getEdge(dir);
+                const moveCost = getMovementCost(cell.terrain, edgeFeature, movementLeft);
+                if (moveCost === Infinity || moveCost > movementLeft) continue;
+
+                // Can't move into occupied hex
+                const occupant = gameState.units.getUnitAt(neighbor);
+                if (occupant) continue;
+
+                // Pick the neighbor that gets closest to target
+                const dist = neighbor.distanceTo(targetHex);
+                if (dist < bestDist || (dist === bestDist && moveCost < bestCost)) {
+                    bestDist = dist;
+                    bestNeighbor = neighbor;
+                    bestCost = moveCost;
+                }
+            }
+
+            if (!bestNeighbor) break;
+
+            cavalry.hex = bestNeighbor;
+            movementLeft -= bestCost;
+
+            // Stop if adjacent to target
+            if (bestDist <= 1) break;
+        }
+    },
+
+    /**
      * Execute a melee attack for enemy AI
      * @param {GameState} gameState - The current game state
-     * @param {Unit} attacker - The attacking infantry
-     * @param {Unit} defender - The target unit (trebuchet)
+     * @param {Unit} attacker - The attacking unit
+     * @param {Unit} defender - The target unit
      * @returns {Object} Battle result
      */
     executeMeleeAttack(gameState, attacker, defender) {

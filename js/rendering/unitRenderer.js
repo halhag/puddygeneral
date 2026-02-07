@@ -78,6 +78,9 @@ class UnitRenderer {
             case UnitClass.SIEGE:
                 this.drawSiege(center, size, colors, unit);
                 break;
+            case UnitClass.CAVALRY:
+                this.drawCavalry(center, size, colors, unit);
+                break;
             default:
                 this.drawGenericUnit(center, size, colors, unit);
         }
@@ -160,6 +163,46 @@ class UnitRenderer {
         this.ctx.fillStyle = colors.light;
         this.ctx.beginPath();
         this.ctx.arc(center.x - s * 0.4, center.y - s * 0.5, s * 0.15, 0, Math.PI * 2);
+        this.ctx.fill();
+    }
+
+    /**
+     * Draw cavalry unit (horse head silhouette)
+     */
+    drawCavalry(center, size, colors, unit) {
+        const s = size * 0.4;
+
+        // Horse head shape
+        this.ctx.fillStyle = colors.main;
+        this.ctx.beginPath();
+        // Neck (from bottom-right going up-left)
+        this.ctx.moveTo(center.x + s * 0.3, center.y + s * 0.5);
+        this.ctx.lineTo(center.x + s * 0.1, center.y - s * 0.1);
+        // Head top
+        this.ctx.lineTo(center.x - s * 0.2, center.y - s * 0.4);
+        // Ear
+        this.ctx.lineTo(center.x - s * 0.15, center.y - s * 0.7);
+        this.ctx.lineTo(center.x - s * 0.05, center.y - s * 0.45);
+        // Forehead to nose
+        this.ctx.lineTo(center.x - s * 0.5, center.y - s * 0.2);
+        // Mouth
+        this.ctx.lineTo(center.x - s * 0.5, center.y - s * 0.05);
+        // Jaw back up
+        this.ctx.lineTo(center.x - s * 0.15, center.y + s * 0.1);
+        // Back to neck
+        this.ctx.lineTo(center.x, center.y + s * 0.5);
+        this.ctx.closePath();
+        this.ctx.fill();
+
+        // Outline
+        this.ctx.strokeStyle = colors.dark;
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+
+        // Eye
+        this.ctx.fillStyle = colors.light;
+        this.ctx.beginPath();
+        this.ctx.arc(center.x - s * 0.25, center.y - s * 0.25, s * 0.08, 0, Math.PI * 2);
         this.ctx.fill();
     }
 

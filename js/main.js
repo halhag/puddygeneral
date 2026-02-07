@@ -118,6 +118,15 @@ class Game {
             });
         }
 
+        // TEMP: Test Level 2 button
+        const testLevel2Btn = document.getElementById('test-level2-btn');
+        if (testLevel2Btn) {
+            testLevel2Btn.addEventListener('click', () => {
+                // Simulate winning Level 1 on day 10: 150 start + 50 castle + 5 turns × 20 bonus = 300
+                this.newGame('Puddy General', 2, { prestige: 300 });
+            });
+        }
+
         // Rules button
         const rulesBtn = document.getElementById('rules-btn');
         if (rulesBtn) {
@@ -206,6 +215,16 @@ class Game {
         const inspectTrebuchetBtn = document.getElementById('inspect-trebuchet-btn');
         if (inspectTrebuchetBtn) {
             inspectTrebuchetBtn.addEventListener('click', () => this.previewUnitType('trebuchet'));
+        }
+
+        const buyCavalryBtn = document.getElementById('buy-cavalry-btn');
+        if (buyCavalryBtn) {
+            buyCavalryBtn.addEventListener('click', () => this.purchaseUnit('cavalry'));
+        }
+
+        const inspectCavalryBtn = document.getElementById('inspect-cavalry-btn');
+        if (inspectCavalryBtn) {
+            inspectCavalryBtn.addEventListener('click', () => this.previewUnitType('cavalry'));
         }
 
         const marketplaceDoneBtn = document.getElementById('marketplace-done-btn');
@@ -475,7 +494,21 @@ class Game {
 
             const okBtn = document.getElementById('victory-ok-btn');
             if (okBtn) {
-                okBtn.onclick = () => modal.classList.add('hidden');
+                const currentLevel = this.gameState.currentLevel;
+                const hasNext = LevelManager.hasNextLevel(currentLevel);
+
+                if (hasNext) {
+                    okBtn.textContent = 'Next Battle!';
+                    okBtn.onclick = () => {
+                        modal.classList.add('hidden');
+                        const prestigeCarryOver = this.gameState.prestige;
+                        const nextLevelId = currentLevel + 1;
+                        this.newGame('Puddy General', nextLevelId, { prestige: prestigeCarryOver });
+                    };
+                } else {
+                    okBtn.textContent = 'Long Live the King!';
+                    okBtn.onclick = () => modal.classList.add('hidden');
+                }
             }
         }
     }
@@ -820,14 +853,33 @@ class Game {
             }
         }
 
+        // Update cavalry button state
+        const cavalryBtn = document.getElementById('buy-cavalry-btn');
+        const cavalryCost = UNIT_TYPES.cavalry.cost;
+        if (cavalryBtn) {
+            const canBuyCavalry = !atMaxUnits && this.gameState.prestige >= cavalryCost;
+            cavalryBtn.disabled = !canBuyCavalry;
+            if (atMaxUnits) {
+                cavalryBtn.textContent = 'Army Full';
+            } else if (this.gameState.prestige < cavalryCost) {
+                cavalryBtn.textContent = 'Not Enough Prestige';
+            } else {
+                cavalryBtn.textContent = 'Purchase';
+            }
+        }
+
         // Update item styling for disabled state
         const infantryItem = document.getElementById('marketplace-infantry');
         const trebuchetItem = document.getElementById('marketplace-trebuchet');
+        const cavalryItem = document.getElementById('marketplace-cavalry');
         if (infantryItem) {
             infantryItem.classList.toggle('disabled', infantryBtn?.disabled);
         }
         if (trebuchetItem) {
             trebuchetItem.classList.toggle('disabled', trebuchetBtn?.disabled);
+        }
+        if (cavalryItem) {
+            cavalryItem.classList.toggle('disabled', cavalryBtn?.disabled);
         }
     }
 
@@ -1695,12 +1747,19 @@ class Game {
     }
 
     // Create a new game
-    newGame(name = 'Puddy General', levelId = 1) {
+    newGame(name = 'Puddy General', levelId = 1, options = {}) {
         this.gameState = GameState.create(name, levelId);
+
+        // Apply prestige carry-over from previous level (before marketplace shows)
+        if (options.prestige !== undefined) {
+            this.gameState.prestige = options.prestige;
+        }
+
         GameStorage.saveGame(this.gameState);
         this.resetPan();
         this.gameState.updateVisibility();
         this.updateHighlights();
+        this.updateTurnDisplay();
         this.render();
         this.logGameState();
 

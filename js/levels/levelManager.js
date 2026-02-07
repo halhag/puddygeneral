@@ -166,6 +166,29 @@ const LevelManager = {
                     }
                 }
             }
+
+            // Generic terrain regions (used by Level 2+)
+            if (level.terrainRegions) {
+                for (const region of level.terrainRegions) {
+                    const b = region.bounds;
+                    const inBounds =
+                        (b.minQ === undefined || q >= b.minQ) &&
+                        (b.maxQ === undefined || q <= b.maxQ) &&
+                        (b.minVRow === undefined || vRow >= b.minVRow) &&
+                        (b.maxVRow === undefined || vRow <= b.maxVRow);
+
+                    if (inBounds && cell.terrain === TerrainType.GRASS) {
+                        const f1 = region.noiseFactor1 || 2.5;
+                        const f2 = region.noiseFactor2 || 1.7;
+                        const noise = Math.sin(q * f1 + cell.hex.r * f2) * 0.5 + 0.5;
+                        if (noise > (region.mountainThreshold || 0.5)) {
+                            cell.terrain = TerrainType.MOUNTAIN;
+                        } else if (noise > (region.hillThreshold || 0.3)) {
+                            cell.terrain = TerrainType.HILL;
+                        }
+                    }
+                }
+            }
         }
     },
 
@@ -323,6 +346,11 @@ if (typeof window !== 'undefined' && window.Level1) {
     LevelManager.register(window.Level1);
 } else {
     console.error('Level1 not found! Make sure level1.js is loaded before levelManager.js');
+}
+
+// Register Level 2
+if (typeof window !== 'undefined' && window.Level2) {
+    LevelManager.register(window.Level2);
 }
 
 // Make available globally

@@ -119,6 +119,52 @@ const UNIT_TYPES = {
         // Display
         icon: 'trebuchet',
         description: 'Siege engine that hurls heavy projectiles. Devastating at range but vulnerable in close combat.'
+    },
+
+    /**
+     * Knights (Heavy Cavalry)
+     * Fast, hard-hitting mounted warriors. Strong attack but weak close defense.
+     * Medieval equivalent of PGII's Panzer III
+     */
+    cavalry: {
+        id: 'cavalry',
+        name: 'Knights',
+        unitClass: UnitClass.CAVALRY,
+
+        // Economy
+        cost: 120,
+
+        // Supplies
+        maxAmmo: null,          // Melee weapons don't run out
+
+        // Movement
+        movementType: MovementType.HORSE,
+        movement: 5,            // Fast - mounted units
+
+        // Vision
+        spotting: 2,            // Good vision from horseback
+
+        // Combat range
+        range: 0,               // Melee only
+
+        // Combat initiative
+        initiative: 6,          // Very high - charges strike first
+
+        // Attack values (damage dealt)
+        softAttack: 3,          // Weak vs soft targets (lance charges scatter infantry less)
+        hardAttack: 7,          // Strong vs hard targets (armored charge)
+        navalAttack: 0,         // No naval capability
+
+        // Defense values (damage reduction)
+        groundDefense: 8,       // Well-armored on open ground
+        closeDefense: 2,        // Vulnerable in tight quarters (forests, castles)
+
+        // Target classification
+        targetType: TargetType.HARD,  // Armored knights are hard targets
+
+        // Display
+        icon: 'cavalry',
+        description: 'Heavily armored mounted knights. Devastating charge on open ground but vulnerable in close terrain.'
     }
 };
 
