@@ -830,8 +830,8 @@ body {
 
     #sidebar {
         width: 100%;
-        flex-direction: row;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
         padding: 8px;
         gap: 8px;
         border-left: none;
@@ -857,7 +857,7 @@ body {
 
     #sidebar-buttons,
     #sidebar-actions {
-        flex-direction: row;
+        flex-direction: column;
         gap: 5px;
     }
 
