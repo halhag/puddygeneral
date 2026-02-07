@@ -36,6 +36,15 @@ class Game {
         // Pending confirmation action
         this.pendingConfirmAction = null;
 
+        // Marketplace state
+        this.marketplaceMaxUnits = 6;
+
+        // Touch panning state
+        this.panOffset = { x: 0, y: 0 };
+        this.isPanning = false;
+        this.touchStart = null;
+        this.panStartOffset = null;
+
         // Initialize
         this.init();
     }
@@ -88,6 +97,11 @@ class Game {
 
         // Mouse leave to clear hover
         this.canvas.addEventListener('mouseleave', () => this.handleMouseLeave());
+
+        // Touch events for mobile panning
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyDown(e));
@@ -171,6 +185,32 @@ class Game {
         const rebuildCheapBtn = document.getElementById('rebuild-cheap-btn');
         if (rebuildCheapBtn) {
             rebuildCheapBtn.addEventListener('click', () => this.handleRebuild(false));
+        }
+
+        // Marketplace modal buttons
+        const buyInfantryBtn = document.getElementById('buy-infantry-btn');
+        if (buyInfantryBtn) {
+            buyInfantryBtn.addEventListener('click', () => this.purchaseUnit('infantry'));
+        }
+
+        const buyTrebuchetBtn = document.getElementById('buy-trebuchet-btn');
+        if (buyTrebuchetBtn) {
+            buyTrebuchetBtn.addEventListener('click', () => this.purchaseUnit('trebuchet'));
+        }
+
+        const inspectInfantryBtn = document.getElementById('inspect-infantry-btn');
+        if (inspectInfantryBtn) {
+            inspectInfantryBtn.addEventListener('click', () => this.previewUnitType('infantry'));
+        }
+
+        const inspectTrebuchetBtn = document.getElementById('inspect-trebuchet-btn');
+        if (inspectTrebuchetBtn) {
+            inspectTrebuchetBtn.addEventListener('click', () => this.previewUnitType('trebuchet'));
+        }
+
+        const marketplaceDoneBtn = document.getElementById('marketplace-done-btn');
+        if (marketplaceDoneBtn) {
+            marketplaceDoneBtn.addEventListener('click', () => this.hideMarketplaceModal());
         }
     }
 
@@ -701,6 +741,180 @@ class Game {
     }
 
     /**
+     * Show the marketplace modal
+     */
+    showMarketplaceModal() {
+        const modal = document.getElementById('marketplace-modal');
+        if (!modal) return;
+
+        this.updateMarketplaceDisplay();
+        modal.classList.remove('hidden');
+    }
+
+    /**
+     * Hide the marketplace modal and show level intro
+     */
+    hideMarketplaceModal() {
+        const modal = document.getElementById('marketplace-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+
+        // Now show the level intro modal
+        const level = LevelManager.getLevel(this.gameState.currentLevel);
+        if (level && level.introText) {
+            this.showLevelIntroModal(level);
+        }
+    }
+
+    /**
+     * Update the marketplace display with current values
+     */
+    updateMarketplaceDisplay() {
+        // Update prestige display
+        const prestigeValue = document.getElementById('marketplace-prestige-value');
+        if (prestigeValue) {
+            prestigeValue.textContent = this.gameState.prestige;
+        }
+
+        // Calculate current unit count (units to place + already placed units)
+        const currentUnits = this.gameState.unitsToPlace;
+        const maxUnits = this.marketplaceMaxUnits;
+
+        // Update unit count display
+        const unitCount = document.getElementById('marketplace-unit-count');
+        if (unitCount) {
+            unitCount.textContent = `${currentUnits} / ${maxUnits}`;
+        }
+
+        // Check if at max units
+        const atMaxUnits = currentUnits >= maxUnits;
+
+        // Update infantry button state
+        const infantryBtn = document.getElementById('buy-infantry-btn');
+        const infantryCost = UNIT_TYPES.infantry.cost;
+        if (infantryBtn) {
+            const canBuyInfantry = !atMaxUnits && this.gameState.prestige >= infantryCost;
+            infantryBtn.disabled = !canBuyInfantry;
+            if (atMaxUnits) {
+                infantryBtn.textContent = 'Army Full';
+            } else if (this.gameState.prestige < infantryCost) {
+                infantryBtn.textContent = 'Not Enough Prestige';
+            } else {
+                infantryBtn.textContent = 'Purchase';
+            }
+        }
+
+        // Update trebuchet button state
+        const trebuchetBtn = document.getElementById('buy-trebuchet-btn');
+        const trebuchetCost = UNIT_TYPES.trebuchet.cost;
+        if (trebuchetBtn) {
+            const canBuyTrebuchet = !atMaxUnits && this.gameState.prestige >= trebuchetCost;
+            trebuchetBtn.disabled = !canBuyTrebuchet;
+            if (atMaxUnits) {
+                trebuchetBtn.textContent = 'Army Full';
+            } else if (this.gameState.prestige < trebuchetCost) {
+                trebuchetBtn.textContent = 'Not Enough Prestige';
+            } else {
+                trebuchetBtn.textContent = 'Purchase';
+            }
+        }
+
+        // Update item styling for disabled state
+        const infantryItem = document.getElementById('marketplace-infantry');
+        const trebuchetItem = document.getElementById('marketplace-trebuchet');
+        if (infantryItem) {
+            infantryItem.classList.toggle('disabled', infantryBtn?.disabled);
+        }
+        if (trebuchetItem) {
+            trebuchetItem.classList.toggle('disabled', trebuchetBtn?.disabled);
+        }
+    }
+
+    /**
+     * Purchase a unit from the marketplace
+     * @param {string} unitType - The unit type to purchase ('infantry' or 'trebuchet')
+     */
+    purchaseUnit(unitType) {
+        const unitDef = UNIT_TYPES[unitType];
+        if (!unitDef) return;
+
+        const cost = unitDef.cost;
+
+        // Check if can afford
+        if (this.gameState.prestige < cost) {
+            console.log(`Cannot afford ${unitType} (need ${cost}, have ${this.gameState.prestige})`);
+            return;
+        }
+
+        // Check if at max units
+        const currentUnits = this.gameState.unitsToPlace;
+        if (currentUnits >= this.marketplaceMaxUnits) {
+            console.log(`Army at maximum capacity (${this.marketplaceMaxUnits})`);
+            return;
+        }
+
+        // Deduct cost and add unit to placement queue
+        this.gameState.prestige -= cost;
+        this.gameState.unitsToPlace++;
+        this.gameState.unitTypesToPlace.push(unitType);
+
+        console.log(`Purchased ${unitType} for ${cost} prestige. Now have ${this.gameState.unitsToPlace} units to place.`);
+
+        // Update displays
+        this.updateMarketplaceDisplay();
+        this.updateTurnDisplay();
+    }
+
+    /**
+     * Preview a unit type's stats in the inspect modal
+     * @param {string} typeId - The unit type ID to preview
+     */
+    previewUnitType(typeId) {
+        const unitType = UNIT_TYPES[typeId];
+        if (!unitType) return;
+
+        const modal = document.getElementById('inspect-modal');
+        if (!modal) return;
+
+        // Populate unit name
+        document.getElementById('inspect-unit-name').textContent = unitType.name;
+
+        // Status section - show base/max values
+        document.getElementById('inspect-strength').textContent = '10/10';
+        document.getElementById('inspect-movement').textContent = `${unitType.movement}/${unitType.movement}`;
+        document.getElementById('inspect-ammo').textContent =
+            unitType.maxAmmo === null ? 'Unlimited' : `${unitType.maxAmmo}/${unitType.maxAmmo}`;
+        document.getElementById('inspect-experience').textContent = '0.00';
+        document.getElementById('inspect-entrenchment').textContent = '0';
+
+        // Combat stats section
+        document.getElementById('inspect-soft-attack').textContent = unitType.softAttack;
+        document.getElementById('inspect-hard-attack').textContent = unitType.hardAttack;
+        document.getElementById('inspect-ground-defense').textContent = unitType.groundDefense;
+        document.getElementById('inspect-close-defense').textContent = unitType.closeDefense;
+        document.getElementById('inspect-initiative').textContent = unitType.initiative;
+
+        // Other section
+        document.getElementById('inspect-spotting').textContent = unitType.spotting;
+        document.getElementById('inspect-range').textContent =
+            unitType.range === 0 ? 'Melee' : unitType.range;
+        document.getElementById('inspect-target-type').textContent =
+            unitType.targetType === 'hard' ? 'Hard' : 'Soft';
+
+        // Description
+        document.getElementById('inspect-description').textContent = unitType.description;
+
+        // Hide rebuild section (this is just a preview)
+        const rebuildSection = document.getElementById('inspect-rebuild-section');
+        if (rebuildSection) {
+            rebuildSection.classList.add('hidden');
+        }
+
+        modal.classList.remove('hidden');
+    }
+
+    /**
      * Handle rebuild button click
      * @param {boolean} keepExperience - Whether to keep experience (full price)
      */
@@ -1163,6 +1377,64 @@ class Game {
         this.render();
     }
 
+    // --- Touch panning for mobile ---
+
+    handleTouchStart(e) {
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        this.touchStart = { x: touch.clientX, y: touch.clientY };
+        this.panStartOffset = { x: this.panOffset.x, y: this.panOffset.y };
+        this.isPanning = false;
+    }
+
+    handleTouchMove(e) {
+        if (!this.touchStart || e.touches.length !== 1) return;
+        e.preventDefault(); // Prevent page scroll
+
+        const touch = e.touches[0];
+        const dx = touch.clientX - this.touchStart.x;
+        const dy = touch.clientY - this.touchStart.y;
+
+        // Only start panning after threshold to distinguish from taps
+        if (!this.isPanning && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+            this.isPanning = true;
+        }
+
+        if (this.isPanning) {
+            this.panOffset.x = this.panStartOffset.x + dx;
+            this.panOffset.y = this.panStartOffset.y + dy;
+            this.clampPanOffset();
+            this.applyPanOffset();
+        }
+    }
+
+    handleTouchEnd(e) {
+        if (!this.isPanning && this.touchStart) {
+            // Short tap = click at the touch point
+            this.handleClick({ clientX: this.touchStart.x, clientY: this.touchStart.y });
+        }
+        this.touchStart = null;
+    }
+
+    applyPanOffset() {
+        this.canvas.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px)`;
+    }
+
+    clampPanOffset() {
+        const container = this.canvas.parentElement;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const minX = rect.width - this.canvas.width;
+        const minY = rect.height - this.canvas.height;
+        this.panOffset.x = Math.max(minX, Math.min(0, this.panOffset.x));
+        this.panOffset.y = Math.max(minY, Math.min(0, this.panOffset.y));
+    }
+
+    resetPan() {
+        this.panOffset = { x: 0, y: 0 };
+        this.applyPanOffset();
+    }
+
     handleKeyDown(event) {
         switch (event.key.toLowerCase()) {
             case 'g':
@@ -1426,19 +1698,28 @@ class Game {
     newGame(name = 'Puddy General', levelId = 1) {
         this.gameState = GameState.create(name, levelId);
         GameStorage.saveGame(this.gameState);
+        this.resetPan();
         this.gameState.updateVisibility();
         this.updateHighlights();
         this.render();
         this.logGameState();
 
-        // Show level intro modal if level has intro text
+        // Get level info
         const level = LevelManager.getLevel(levelId);
         if (level) {
             console.log(`Starting Level ${level.id}: ${level.name}`);
             console.log(level.description);
 
-            // Show intro modal if level has introText
-            if (level.introText) {
+            // Set max units from level config if available
+            if (level.maxUnits) {
+                this.marketplaceMaxUnits = level.maxUnits;
+            }
+
+            // Show marketplace for Level 2+ (when showMarketplace is true)
+            if (level.showMarketplace) {
+                this.showMarketplaceModal();
+            } else if (level.introText) {
+                // No marketplace, go straight to level intro
                 this.showLevelIntroModal(level);
             }
         }

@@ -290,6 +290,50 @@
         </div>
     </div>
 
+    <!-- Marketplace Modal -->
+    <div id="marketplace-modal" class="modal hidden">
+        <div class="modal-content marketplace-modal">
+            <div class="modal-header">Marketplace</div>
+            <div class="modal-body marketplace-body">
+                <div class="marketplace-info">
+                    <div class="marketplace-stat">
+                        <span class="marketplace-label">Prestige:</span>
+                        <span id="marketplace-prestige-value" class="marketplace-value prestige">500</span>
+                    </div>
+                    <div class="marketplace-stat">
+                        <span class="marketplace-label">Army:</span>
+                        <span id="marketplace-unit-count" class="marketplace-value">4 / 6</span>
+                    </div>
+                </div>
+                <div class="marketplace-items">
+                    <div class="marketplace-item" id="marketplace-infantry">
+                        <div class="item-header">
+                            <span class="item-name">Men-at-Arms</span>
+                            <span class="item-cost">Cost: <span class="cost-value">60</span></span>
+                        </div>
+                        <div class="item-description">Basic foot soldiers armed with spears and swords. Reliable and cost-effective.</div>
+                        <div class="item-actions">
+                            <button class="marketplace-inspect-btn" id="inspect-infantry-btn" title="View Details">🔍</button>
+                            <button class="marketplace-buy-btn" id="buy-infantry-btn">Purchase</button>
+                        </div>
+                    </div>
+                    <div class="marketplace-item" id="marketplace-trebuchet">
+                        <div class="item-header">
+                            <span class="item-name">Trebuchet</span>
+                            <span class="item-cost">Cost: <span class="cost-value">84</span></span>
+                        </div>
+                        <div class="item-description">Siege engine that hurls heavy projectiles. Devastating at range but vulnerable in melee.</div>
+                        <div class="item-actions">
+                            <button class="marketplace-inspect-btn" id="inspect-trebuchet-btn" title="View Details">🔍</button>
+                            <button class="marketplace-buy-btn" id="buy-trebuchet-btn">Purchase</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button id="marketplace-done-btn" class="modal-btn">Continue to Battle</button>
+        </div>
+    </div>
+
     <!-- Load scripts in order -->
     <script src="js/config.js"></script>
     <script src="js/core/hex.js"></script>

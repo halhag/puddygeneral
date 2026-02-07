@@ -26,6 +26,7 @@ Now off you go and invade!`,
     // Player setup
     playerUnitsToPlace: 4,  // 3 infantry + 1 trebuchet
     playerStartingPrestige: 150,
+    // showMarketplace: false (default) - marketplace shows for Level 2+
 
     // Castle positions (q, vRow format)
     // Player castles are on the right, enemy castles on the left
