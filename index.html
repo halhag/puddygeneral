@@ -25,6 +25,7 @@
                 <button id="new-game-btn">New Game</button>
                 <button id="rules-btn">Rules</button>
                 <button id="test-level2-btn" style="background:linear-gradient(180deg,#7a5a2a 0%,#4a3a1a 100%);border-color:#aa8a4a;">Level 2</button>
+                <button id="test-level3-btn" style="background:linear-gradient(180deg,#5a2a2a 0%,#3a1a1a 100%);border-color:#aa4a4a;">Level 3</button>
             </div>
             <div id="sidebar-info">
                 <div class="info-row">
@@ -88,8 +89,7 @@
         <div class="modal-content">
             <div class="modal-header">DEFEAT!</div>
             <div class="modal-body">
-                <p>Time has run out!</p>
-                <p>The enemy castles remain unconquered.</p>
+                <p id="defeat-text">You ran out of time to capture all castles!</p>
                 <p class="modal-footer-text">Perhaps another strategy is needed...</p>
             </div>
             <button id="defeat-ok-btn" class="modal-btn defeat-btn">Try Again</button>
@@ -202,6 +202,19 @@
                         </button>
                     </div>
                     <div id="rebuild-status" class="rebuild-status"></div>
+                </div>
+                <!-- Ammo Purchase Section (shown for player's ammo-using units) -->
+                <div id="inspect-ammo-section" class="inspect-section hidden">
+                    <div class="inspect-section-title">Resupply</div>
+                    <div class="inspect-row">
+                        <span class="inspect-label">Ammo:</span>
+                        <span id="inspect-ammo-detail">0/0</span>
+                    </div>
+                    <button id="buy-ammo-btn" class="rebuild-btn">
+                        Buy 1 Ammo (8 prestige)<br>
+                        <span class="rebuild-cost">Uses unit's turn</span>
+                    </button>
+                    <div id="ammo-status" class="rebuild-status"></div>
                 </div>
             </div>
             <button id="inspect-ok-btn" class="modal-btn">Close</button>
@@ -356,6 +369,7 @@
     <script src="js/core/map.js"></script>
     <script src="js/levels/level1.js"></script>
     <script src="js/levels/level2.js"></script>
+    <script src="js/levels/level3.js"></script>
     <script src="js/levels/levelManager.js"></script>
     <script src="js/core/gameState.js"></script>
     <script src="js/rendering/hexRenderer.js"></script>

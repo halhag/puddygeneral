@@ -44,6 +44,12 @@ class GameState {
         };
         // Current level number (for campaign progression)
         this.currentLevel = 1;
+        // Game mode: 'offense' (capture enemy castles) or 'defense' (defend your castles)
+        this.gameMode = 'offense';
+        // Defense mode state
+        this.playerCastleKeys = [];     // Hex keys of player castles to defend
+        this.lostCastles = [];          // Hex keys of player castles captured by enemy
+        this.hordeState = null;         // Horde AI state (only for defense levels)
         // Internal cache for movement costs (set by getValidMovementHexes)
         this._movementCosts = new Map();
         // Cache for visible hexes (recalculated when units move)
@@ -84,11 +90,26 @@ class GameState {
                 return new Hex(pos.q, r).key;
             });
 
+            // Set game mode
+            state.gameMode = level.gameMode || 'offense';
+
+            // Store player castle hex keys (for defense mode)
+            state.playerCastleKeys = level.castles.player.map(pos => {
+                const r = LevelManager.vRowToR(pos.q, pos.vRow);
+                return new Hex(pos.q, r).key;
+            });
+            state.lostCastles = [];
+
             // Place enemy units from level definition
             LevelManager.placeEnemyUnits(state.units, level);
 
             // Place player's pre-placed units from level definition
             LevelManager.placePlayerUnits(state.units, level);
+
+            // Initialize horde state for defense levels
+            if (state.gameMode === 'defense' && level.hordeConfig) {
+                state.initHordeAssignments(level);
+            }
 
             // Set initial entrenchment for all units based on terrain
             for (const unit of state.units.getAllUnits()) {
@@ -128,7 +149,11 @@ class GameState {
             turnsRemaining: this.turnsRemaining,
             earlyVictoryBonus: this.earlyVictoryBonus,
             prestige: this.prestige,
-            settings: this.settings
+            settings: this.settings,
+            gameMode: this.gameMode,
+            playerCastleKeys: this.playerCastleKeys,
+            lostCastles: this.lostCastles,
+            hordeState: this.hordeState
         };
     }
 
@@ -159,6 +184,10 @@ class GameState {
         state.prestige = data.prestige ?? 150;
         state.currentLevel = data.currentLevel ?? 1;
         state.settings = { ...state.settings, ...data.settings };
+        state.gameMode = data.gameMode || 'offense';
+        state.playerCastleKeys = data.playerCastleKeys || [];
+        state.lostCastles = data.lostCastles || [];
+        state.hordeState = data.hordeState || null;
         return state;
     }
 
@@ -265,9 +294,12 @@ class GameState {
         const validHexes = [];
         const cells = this.map.getAllCells();
 
-        // Valid placement is in columns 18-19 (rightmost fully visible columns)
+        // Placement area depends on game mode
+        const minQ = this.gameMode === 'defense' ? 12 : 18;
+        const maxQ = 19;
+
         for (const cell of cells) {
-            if (cell.hex.q >= 18 && cell.hex.q <= 19) {
+            if (cell.hex.q >= minQ && cell.hex.q <= maxQ) {
                 const terrain = getTerrainProperties(cell.terrain);
                 // Must be passable and unoccupied
                 if (!terrain.impassable && !this.units.getUnitAt(cell.hex)) {
@@ -676,6 +708,105 @@ class GameState {
     }
 
     /**
+     * Initialize horde cavalry assignments based on level config
+     * Maps each enemy unit ID to its target castle hex key
+     * @param {Object} level - The level definition
+     */
+    initHordeAssignments(level) {
+        const config = level.hordeConfig;
+        const enemyUnits = this.units.getPlayerUnits(1);
+
+        this.hordeState = {
+            assignments: {},
+            capturedCastles: [],
+            garrisonUnits: {},
+            rebuildMode: false
+        };
+
+        for (let i = 0; i < enemyUnits.length; i++) {
+            const unit = enemyUnits[i];
+            if (unit.typeId === 'trebuchet') continue;
+
+            let targetIndex = null;
+            if (config.mainForceUnits.includes(i)) {
+                targetIndex = config.mainForceTarget;
+            } else if (config.raiderUnits.includes(i)) {
+                targetIndex = config.raiderTarget;
+            }
+
+            if (targetIndex !== null && level.castles.player[targetIndex]) {
+                const castlePos = level.castles.player[targetIndex];
+                const r = LevelManager.vRowToR(castlePos.q, castlePos.vRow);
+                this.hordeState.assignments[unit.id] = new Hex(castlePos.q, r).key;
+            }
+        }
+    }
+
+    /**
+     * Check if an enemy unit has captured a player castle (defense mode)
+     * @param {Hex} hex - The hex to check
+     * @returns {boolean} True if a castle was captured
+     */
+    checkEnemyCastleCapture(hex) {
+        if (this.gameMode !== 'defense') return false;
+
+        const cell = this.map.getCell(hex);
+        if (!cell || cell.terrain !== TerrainType.CASTLE) return false;
+
+        const key = hex.key;
+        if (!this.playerCastleKeys.includes(key)) return false;
+        if (this.lostCastles.includes(key)) return false;
+
+        // Castle is captured only if no player unit is on it
+        const playerUnit = this.units.getUnitAt(hex);
+        if (playerUnit && playerUnit.playerId === 0) return false;
+
+        // Castle falls!
+        this.lostCastles.push(key);
+        if (this.hordeState) {
+            this.hordeState.capturedCastles.push(key);
+        }
+
+        console.log(`Player castle captured! (${this.lostCastles.length}/${this.playerCastleKeys.length})`);
+
+        // Check defeat: all player castles captured
+        if (this.lostCastles.length >= this.playerCastleKeys.length) {
+            this.phase = GamePhase.DEFEAT;
+            console.log('DEFEAT! All castles lost!');
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if a player has recaptured a lost castle (defense mode)
+     * Called when a player unit moves onto or advances into a castle hex
+     * @param {Hex} hex - The hex to check
+     */
+    checkPlayerCastleRecapture(hex) {
+        if (this.gameMode !== 'defense') return;
+
+        const key = hex.key;
+        const index = this.lostCastles.indexOf(key);
+        if (index === -1) return;
+
+        // Castle recaptured!
+        this.lostCastles.splice(index, 1);
+
+        // Also remove garrison assignment from hordeState
+        if (this.hordeState && this.hordeState.garrisonUnits) {
+            for (const [unitId, castleKey] of Object.entries(this.hordeState.garrisonUnits)) {
+                if (castleKey === key) {
+                    delete this.hordeState.garrisonUnits[unitId];
+                }
+            }
+        }
+
+        const held = this.playerCastleKeys.length - this.lostCastles.length;
+        console.log(`Castle recaptured! (${held}/${this.playerCastleKeys.length} held)`);
+    }
+
+    /**
      * End the current turn manually
      */
     endTurn() {
@@ -687,10 +818,17 @@ class GameState {
         this.turnsRemaining--;
         this.turn++;  // Keep track of current turn number for display
 
-        // Check for defeat (ran out of turns)
+        // Check for end-of-turns condition
         if (this.turnsRemaining <= 0 && this.phase === GamePhase.MOVEMENT) {
-            this.phase = GamePhase.DEFEAT;
-            console.log('DEFEAT! Ran out of turns!');
+            if (this.gameMode === 'defense') {
+                // Defense mode: surviving all turns = VICTORY
+                this.phase = GamePhase.VICTORY;
+                console.log('VICTORY! Survived all turns!');
+            } else {
+                // Offense mode: running out of turns = DEFEAT
+                this.phase = GamePhase.DEFEAT;
+                console.log('DEFEAT! Ran out of turns!');
+            }
         }
 
         this.deselectHex();

@@ -127,6 +127,15 @@ class Game {
             });
         }
 
+        // TEMP: Test Level 3 button
+        const testLevel3Btn = document.getElementById('test-level3-btn');
+        if (testLevel3Btn) {
+            testLevel3Btn.addEventListener('click', () => {
+                // Simulate winning Level 2 with ~850 prestige
+                this.newGame('Puddy General', 3, { prestige: 850 });
+            });
+        }
+
         // Rules button
         const rulesBtn = document.getElementById('rules-btn');
         if (rulesBtn) {
@@ -194,6 +203,12 @@ class Game {
         const rebuildCheapBtn = document.getElementById('rebuild-cheap-btn');
         if (rebuildCheapBtn) {
             rebuildCheapBtn.addEventListener('click', () => this.handleRebuild(false));
+        }
+
+        // Buy ammo button in inspect modal
+        const buyAmmoBtn = document.getElementById('buy-ammo-btn');
+        if (buyAmmoBtn) {
+            buyAmmoBtn.addEventListener('click', () => this.handleBuyAmmo());
         }
 
         // Marketplace modal buttons
@@ -368,6 +383,9 @@ class Game {
                         return;
                     }
 
+                    // Check castle recapture in defense mode
+                    this.gameState.checkPlayerCastleRecapture(actualHex);
+
                     // Check victory
                     if (this.gameState.phase === GamePhase.VICTORY) {
                         this.showVictory();
@@ -453,7 +471,12 @@ class Game {
 
         const castleDisplay = document.getElementById('castle-display');
         if (castleDisplay) {
-            castleDisplay.textContent = `${this.gameState.capturedCastles.length}/${this.gameState.totalCastles}`;
+            if (this.gameState.gameMode === 'defense') {
+                const held = this.gameState.playerCastleKeys.length - this.gameState.lostCastles.length;
+                castleDisplay.textContent = `${held}/${this.gameState.playerCastleKeys.length} held`;
+            } else {
+                castleDisplay.textContent = `${this.gameState.capturedCastles.length}/${this.gameState.totalCastles}`;
+            }
         }
 
         const prestigeDisplay = document.getElementById('prestige-display');
@@ -474,53 +497,113 @@ class Game {
     }
 
     showVictory() {
-        console.log('=================================');
-        console.log('   VICTORY! All castles captured!');
-        console.log(`   Turns remaining: ${this.gameState.turnsRemaining}`);
-        console.log(`   Early victory bonus: +${this.gameState.turnsRemaining * this.gameState.earlyVictoryBonus} prestige`);
-        console.log('=================================');
+        const isDefense = this.gameState.gameMode === 'defense';
 
-        // Show custom victory modal
-        const modal = document.getElementById('victory-modal');
-        if (modal) {
-            // Update victory text to show bonus
-            const bonusText = document.getElementById('victory-bonus-text');
-            if (bonusText) {
-                const bonus = this.gameState.turnsRemaining * this.gameState.earlyVictoryBonus;
-                bonusText.textContent = `Turns remaining: ${this.gameState.turnsRemaining} (+${bonus} prestige bonus!)`;
+        if (isDefense) {
+            // Defense mode victory: award prestige based on castles held
+            const castlesHeld = this.gameState.playerCastleKeys.length - this.gameState.lostCastles.length;
+            const level = LevelManager.getLevel(this.gameState.currentLevel);
+            const perCastle = level ? (level.defensePrestigePerCastle || 75) : 75;
+            const defenseBonus = castlesHeld * perCastle;
+            this.gameState.prestige += defenseBonus;
+
+            console.log('=================================');
+            console.log('   VICTORY! You survived the siege!');
+            console.log(`   Castles held: ${castlesHeld}/${this.gameState.playerCastleKeys.length}`);
+            console.log(`   Defense bonus: +${defenseBonus} prestige (${castlesHeld} × ${perCastle})`);
+            console.log('=================================');
+
+            const modal = document.getElementById('victory-modal');
+            if (modal) {
+                const bonusText = document.getElementById('victory-bonus-text');
+                if (bonusText) {
+                    bonusText.textContent = `Castles held: ${castlesHeld}/${this.gameState.playerCastleKeys.length} (+${defenseBonus} prestige)`;
+                }
+
+                modal.classList.remove('hidden');
+
+                const okBtn = document.getElementById('victory-ok-btn');
+                if (okBtn) {
+                    const currentLevel = this.gameState.currentLevel;
+                    const hasNext = LevelManager.hasNextLevel(currentLevel);
+
+                    if (hasNext) {
+                        okBtn.textContent = 'Next Battle!';
+                        okBtn.onclick = () => {
+                            modal.classList.add('hidden');
+                            const prestigeCarryOver = this.gameState.prestige;
+                            const nextLevelId = currentLevel + 1;
+                            this.newGame('Puddy General', nextLevelId, { prestige: prestigeCarryOver });
+                        };
+                    } else {
+                        okBtn.textContent = 'Long Live the King!';
+                        okBtn.onclick = () => modal.classList.add('hidden');
+                    }
+                }
             }
+        } else {
+            // Offense mode victory
+            console.log('=================================');
+            console.log('   VICTORY! All castles captured!');
+            console.log(`   Turns remaining: ${this.gameState.turnsRemaining}`);
+            console.log(`   Early victory bonus: +${this.gameState.turnsRemaining * this.gameState.earlyVictoryBonus} prestige`);
+            console.log('=================================');
 
-            modal.classList.remove('hidden');
+            const modal = document.getElementById('victory-modal');
+            if (modal) {
+                const bonusText = document.getElementById('victory-bonus-text');
+                if (bonusText) {
+                    const bonus = this.gameState.turnsRemaining * this.gameState.earlyVictoryBonus;
+                    bonusText.textContent = `Turns remaining: ${this.gameState.turnsRemaining} (+${bonus} prestige bonus!)`;
+                }
 
-            const okBtn = document.getElementById('victory-ok-btn');
-            if (okBtn) {
-                const currentLevel = this.gameState.currentLevel;
-                const hasNext = LevelManager.hasNextLevel(currentLevel);
+                modal.classList.remove('hidden');
 
-                if (hasNext) {
-                    okBtn.textContent = 'Next Battle!';
-                    okBtn.onclick = () => {
-                        modal.classList.add('hidden');
-                        const prestigeCarryOver = this.gameState.prestige;
-                        const nextLevelId = currentLevel + 1;
-                        this.newGame('Puddy General', nextLevelId, { prestige: prestigeCarryOver });
-                    };
-                } else {
-                    okBtn.textContent = 'Long Live the King!';
-                    okBtn.onclick = () => modal.classList.add('hidden');
+                const okBtn = document.getElementById('victory-ok-btn');
+                if (okBtn) {
+                    const currentLevel = this.gameState.currentLevel;
+                    const hasNext = LevelManager.hasNextLevel(currentLevel);
+
+                    if (hasNext) {
+                        okBtn.textContent = 'Next Battle!';
+                        okBtn.onclick = () => {
+                            modal.classList.add('hidden');
+                            const prestigeCarryOver = this.gameState.prestige;
+                            const nextLevelId = currentLevel + 1;
+                            this.newGame('Puddy General', nextLevelId, { prestige: prestigeCarryOver });
+                        };
+                    } else {
+                        okBtn.textContent = 'Long Live the King!';
+                        okBtn.onclick = () => modal.classList.add('hidden');
+                    }
                 }
             }
         }
     }
 
     showDefeat() {
-        console.log('=================================');
-        console.log('   DEFEAT! Ran out of turns!');
-        console.log('=================================');
+        const isDefense = this.gameState.gameMode === 'defense';
+
+        if (isDefense) {
+            console.log('=================================');
+            console.log('   DEFEAT! All your castles have fallen!');
+            console.log('=================================');
+        } else {
+            console.log('=================================');
+            console.log('   DEFEAT! Ran out of turns!');
+            console.log('=================================');
+        }
 
         // Show defeat modal
         const modal = document.getElementById('defeat-modal');
         if (modal) {
+            // Update defeat message for defense mode
+            const defeatText = document.getElementById('defeat-text');
+            if (defeatText) {
+                defeatText.textContent = isDefense
+                    ? 'All your castles have fallen to the horde!'
+                    : 'You ran out of time to capture all castles!';
+            }
             modal.classList.remove('hidden');
 
             const okBtn = document.getElementById('defeat-ok-btn');
@@ -608,13 +691,15 @@ class Game {
         const unitType = unit.getType();
 
         // Populate unit name
-        document.getElementById('inspect-unit-name').textContent = unitType.name;
+        let inspectName = unitType.name;
+        if (unit.isAuxiliary) inspectName += ' (Auxiliary)';
+        document.getElementById('inspect-unit-name').textContent = inspectName;
 
         // Status section
-        document.getElementById('inspect-strength').textContent = `${unit.strength}/10`;
+        document.getElementById('inspect-strength').textContent = `${Math.floor(unit.strength)}/10`;
         document.getElementById('inspect-movement').textContent = `${unit.movementRemaining}/${unitType.movement}`;
         document.getElementById('inspect-ammo').textContent =
-            unit.ammo === null ? 'Unlimited' : `${unit.ammo}/${unitType.maxAmmo}`;
+            unitType.maxAmmo === null ? 'Unlimited' : `${unit.ammo}/${unitType.maxAmmo}`;
         document.getElementById('inspect-experience').textContent = unit.experience.toFixed(2);
         document.getElementById('inspect-entrenchment').textContent = unit.entrenchment;
 
@@ -654,19 +739,21 @@ class Game {
                 const affordableExp = RebuildSystem.getAffordableRebuild(unit, prestige, true);
                 const affordableCheap = RebuildSystem.getAffordableRebuild(unit, prestige, false);
 
-                document.getElementById('inspect-missing-strength').textContent = costs.missingStrength;
+                // Show restorable strength (half of total missing)
+                document.getElementById('inspect-missing-strength').textContent =
+                    `${Math.floor(costs.missingStrength)} (of ${Math.floor(costs.totalMissing)} missing)`;
 
                 // Show full cost, and if partial, also show what's affordable
                 if (affordableExp.affordableStrength > 0 && affordableExp.affordableStrength < costs.missingStrength) {
                     document.getElementById('rebuild-cost-exp').textContent =
-                        `Full: ${costs.withExp} | +${affordableExp.affordableStrength} str: ${affordableExp.cost}`;
+                        `Full: ${costs.withExp} | +${Math.floor(affordableExp.affordableStrength)} str: ${affordableExp.cost}`;
                 } else {
                     document.getElementById('rebuild-cost-exp').textContent = `Cost: ${costs.withExp}`;
                 }
 
                 if (affordableCheap.affordableStrength > 0 && affordableCheap.affordableStrength < costs.missingStrength) {
                     document.getElementById('rebuild-cost-cheap').textContent =
-                        `Full: ${costs.cheap} | +${affordableCheap.affordableStrength} str: ${affordableCheap.cost}`;
+                        `Full: ${costs.cheap} | +${Math.floor(affordableCheap.affordableStrength)} str: ${affordableCheap.cost}`;
                     document.getElementById('rebuild-exp-loss').textContent =
                         `Exp loss: ${affordableCheap.expLoss.toFixed(2)}`;
                 } else {
@@ -704,6 +791,46 @@ class Game {
                 }
             } else {
                 rebuildSection.classList.add('hidden');
+            }
+        }
+
+        // Ammo purchase section - show for player's ammo-using units
+        const ammoSection = document.getElementById('inspect-ammo-section');
+        if (ammoSection) {
+            const isPlayerUnit = unit.playerId === this.gameState.currentPlayer;
+            const usesAmmo = unit.getType().maxAmmo !== null;
+
+            if (isPlayerUnit && usesAmmo) {
+                ammoSection.classList.remove('hidden');
+
+                // Update ammo display
+                document.getElementById('inspect-ammo-detail').textContent =
+                    `${unit.ammo}/${unit.getType().maxAmmo}`;
+
+                const buyBtn = document.getElementById('buy-ammo-btn');
+                const ammoStatus = document.getElementById('ammo-status');
+                const canBuy = RebuildSystem.canBuyAmmo(this.gameState, unit);
+                buyBtn.disabled = !canBuy;
+
+                // Show reason if can't buy
+                if (unit.strength < 10) {
+                    ammoStatus.textContent = 'Must be full strength to resupply';
+                    ammoStatus.className = 'rebuild-status error';
+                } else if (unit.ammo >= unit.getType().maxAmmo) {
+                    ammoStatus.textContent = 'Ammo full';
+                    ammoStatus.className = 'rebuild-status';
+                } else if (unit.hasMoved || unit.hasAttacked) {
+                    ammoStatus.textContent = 'Unit has already acted this turn';
+                    ammoStatus.className = 'rebuild-status error';
+                } else if (this.gameState.prestige < 8) {
+                    ammoStatus.textContent = 'Need 8 prestige';
+                    ammoStatus.className = 'rebuild-status error';
+                } else {
+                    ammoStatus.textContent = '';
+                    ammoStatus.className = 'rebuild-status';
+                }
+            } else {
+                ammoSection.classList.add('hidden');
             }
         }
 
@@ -986,9 +1113,12 @@ class Game {
 
             const rebuildStatus = document.getElementById('rebuild-status');
             if (rebuildStatus) {
-                let msg = `Rebuilt! +${result.strengthGained} str, Cost: ${result.cost}`;
+                let msg = `Rebuilt! +${Math.floor(result.strengthGained)} str, Cost: ${result.cost}`;
                 if (result.expLost > 0) {
                     msg += `, Exp lost: ${result.expLost.toFixed(2)}`;
+                }
+                if (result.ammoGained > 0) {
+                    msg += ', +1 ammo';
                 }
                 rebuildStatus.textContent = msg;
                 rebuildStatus.className = 'rebuild-status success';
@@ -998,6 +1128,31 @@ class Game {
             if (rebuildStatus) {
                 rebuildStatus.textContent = 'Insufficient prestige!';
                 rebuildStatus.className = 'rebuild-status error';
+            }
+        }
+    }
+
+    /**
+     * Handle buy ammo button click
+     */
+    handleBuyAmmo() {
+        if (!this.inspectedUnit) return;
+
+        const result = RebuildSystem.buyAmmo(this.gameState, this.inspectedUnit);
+
+        if (result.success) {
+            // Refresh the modal to show updated stats
+            this.showInspectModal(this.inspectedUnit);
+
+            // Update displays
+            this.updateTurnDisplay();
+            this.updateHighlights();
+            this.render();
+
+            const ammoStatus = document.getElementById('ammo-status');
+            if (ammoStatus) {
+                ammoStatus.textContent = `Resupplied! +1 ammo, Cost: ${result.cost} prestige`;
+                ammoStatus.className = 'rebuild-status success';
             }
         }
     }
@@ -1078,28 +1233,28 @@ class Game {
         // Show custom battle modal
         const modal = document.getElementById('battle-modal');
         if (modal) {
-            // Update attacker info
-            document.getElementById('battle-attacker-name').textContent = attacker.getName();
-            document.getElementById('battle-attacker-before').textContent = result.attackerStrengthBefore;
-            document.getElementById('battle-attacker-after').textContent = result.attackerStrengthAfter;
+            // Update attacker info (player's unit)
+            document.getElementById('battle-attacker-name').textContent = `Your ${attacker.getName()}`;
+            document.getElementById('battle-attacker-before').textContent = Math.floor(result.attackerStrengthBefore);
+            document.getElementById('battle-attacker-after').textContent = Math.floor(result.attackerStrengthAfter);
             document.getElementById('battle-attacker-damage').textContent =
-                result.attackerDamage > 0 ? `-${result.attackerDamage}` : '0';
+                result.attackerDamage > 0 ? `-${Math.floor(result.attackerDamage)}` : '0';
 
-            // Update defender info
-            document.getElementById('battle-defender-name').textContent = defender.getName();
-            document.getElementById('battle-defender-before').textContent = result.defenderStrengthBefore;
-            document.getElementById('battle-defender-after').textContent = result.defenderStrengthAfter;
+            // Update defender info (enemy unit)
+            document.getElementById('battle-defender-name').textContent = `Enemy ${defender.getName()}`;
+            document.getElementById('battle-defender-before').textContent = Math.floor(result.defenderStrengthBefore);
+            document.getElementById('battle-defender-after').textContent = Math.floor(result.defenderStrengthAfter);
             document.getElementById('battle-defender-damage').textContent =
-                result.defenderDamage > 0 ? `-${result.defenderDamage}` : '0';
+                result.defenderDamage > 0 ? `-${Math.floor(result.defenderDamage)}` : '0';
 
             // Update status message
             let status = '';
             if (result.attackerDestroyed && result.defenderDestroyed) {
                 status = 'Mutual destruction!';
             } else if (result.attackerDestroyed) {
-                status = `${attacker.getName()} destroyed!`;
+                status = `Your ${attacker.getName()} destroyed!`;
             } else if (result.defenderDestroyed) {
-                status = `${defender.getName()} destroyed!`;
+                status = `Enemy ${defender.getName()} destroyed!`;
             } else {
                 status = 'Both units survive.';
             }
@@ -1173,6 +1328,7 @@ class Game {
 
                         // Now check castle capture (attacker is in the hex)
                         this.gameState.checkCastleCapture(defenderHex);
+                        this.gameState.checkPlayerCastleRecapture(defenderHex);
 
                         // Check victory
                         if (this.gameState.phase === GamePhase.VICTORY) {
@@ -1238,18 +1394,18 @@ class Game {
         // Show battle modal
         const modal = document.getElementById('battle-modal');
         if (modal) {
-            document.getElementById('battle-attacker-name').textContent = attacker.getName() + ' (Ranged)';
-            document.getElementById('battle-attacker-before').textContent = result.attackerStrengthBefore;
-            document.getElementById('battle-attacker-after').textContent = result.attackerStrengthAfter;
+            document.getElementById('battle-attacker-name').textContent = `Your ${attacker.getName()} (Ranged)`;
+            document.getElementById('battle-attacker-before').textContent = Math.floor(result.attackerStrengthBefore);
+            document.getElementById('battle-attacker-after').textContent = Math.floor(result.attackerStrengthAfter);
             document.getElementById('battle-attacker-damage').textContent = '0';
 
-            document.getElementById('battle-defender-name').textContent = defender.getName();
-            document.getElementById('battle-defender-before').textContent = result.defenderStrengthBefore;
-            document.getElementById('battle-defender-after').textContent = result.defenderStrengthAfter;
+            document.getElementById('battle-defender-name').textContent = `Enemy ${defender.getName()}`;
+            document.getElementById('battle-defender-before').textContent = Math.floor(result.defenderStrengthBefore);
+            document.getElementById('battle-defender-after').textContent = Math.floor(result.defenderStrengthAfter);
             document.getElementById('battle-defender-damage').textContent =
-                result.defenderDamage > 0 ? `-${result.defenderDamage}` : '0';
+                result.defenderDamage > 0 ? `-${Math.floor(result.defenderDamage)}` : '0';
 
-            let status = result.defenderDestroyed ? `${defender.getName()} destroyed!` : 'Target survives.';
+            let status = result.defenderDestroyed ? `Enemy ${defender.getName()} destroyed!` : 'Target survives.';
             document.getElementById('battle-status').textContent = status;
 
             const attackerAfter = document.getElementById('battle-attacker-after');
@@ -1374,20 +1530,20 @@ class Game {
         // Show simplified popup for defensive fire
         const modal = document.getElementById('battle-modal');
         if (modal) {
-            document.getElementById('battle-attacker-name').textContent = artillery.getName() + ' (Def Fire)';
-            document.getElementById('battle-attacker-before').textContent = artillery.strength;
-            document.getElementById('battle-attacker-after').textContent = artillery.strength;
+            document.getElementById('battle-attacker-name').textContent = `Enemy ${artillery.getName()} (Def Fire)`;
+            document.getElementById('battle-attacker-before').textContent = Math.floor(artillery.strength);
+            document.getElementById('battle-attacker-after').textContent = Math.floor(artillery.strength);
             document.getElementById('battle-attacker-damage').textContent = '0';
 
-            document.getElementById('battle-defender-name').textContent = target.getName();
-            document.getElementById('battle-defender-before').textContent = result.defenderStrengthBefore;
-            document.getElementById('battle-defender-after').textContent = result.defenderStrengthAfter;
+            document.getElementById('battle-defender-name').textContent = `Your ${target.getName()}`;
+            document.getElementById('battle-defender-before').textContent = Math.floor(result.defenderStrengthBefore);
+            document.getElementById('battle-defender-after').textContent = Math.floor(result.defenderStrengthAfter);
             document.getElementById('battle-defender-damage').textContent =
-                result.defenderDamage > 0 ? `-${result.defenderDamage}` : '0';
+                result.defenderDamage > 0 ? `-${Math.floor(result.defenderDamage)}` : '0';
 
             let status = result.defenderDestroyed ?
-                `${target.getName()} destroyed by defensive fire!` :
-                `Defensive fire hits for ${result.defenderDamage}`;
+                `Your ${target.getName()} destroyed by defensive fire!` :
+                `Defensive fire hits for ${Math.floor(result.defenderDamage)}`;
             document.getElementById('battle-status').textContent = status;
 
             const attackerAfter = document.getElementById('battle-attacker-after');
@@ -1538,9 +1694,15 @@ class Game {
     endTurn() {
         this.gameState.endTurn();
 
-        // Check for defeat
+        // Check for defeat (ran out of turns in offense, or all castles lost in defense)
         if (this.gameState.phase === GamePhase.DEFEAT) {
             this.showDefeat();
+            return;
+        }
+
+        // Check for defense victory (survived all turns)
+        if (this.gameState.phase === GamePhase.VICTORY) {
+            this.showVictory();
             return;
         }
 
@@ -1549,7 +1711,18 @@ class Game {
 
         // Show enemy action results
         if (enemyActions.length > 0) {
-            this.showEnemyActionsSequence(enemyActions, 0);
+            this.showEnemyActionsSequence(enemyActions, 0, () => {
+                // After all enemy actions, check for defense defeat (castle captured)
+                if (this.gameState.phase === GamePhase.DEFEAT) {
+                    this.showDefeat();
+                    return;
+                }
+                // Reset player units for the new turn
+                this.gameState.units.resetTurn(0);
+                this.updateHighlights();
+                this.render();
+                console.log(`Turn ${this.gameState.turn} begins`);
+            });
         } else {
             // Reset player units for the new turn
             this.gameState.units.resetTurn(0);
@@ -1564,20 +1737,34 @@ class Game {
      * @param {Array} actions - Array of enemy action results
      * @param {number} index - Current action index
      */
-    showEnemyActionsSequence(actions, index) {
+    showEnemyActionsSequence(actions, index, onComplete = null) {
         if (index >= actions.length) {
-            // All actions shown, reset player units for the new turn
-            this.gameState.units.resetTurn(0);
-            this.updateHighlights();
-            this.render();
-            console.log(`Turn ${this.gameState.turn} begins`);
+            if (onComplete) {
+                onComplete();
+            } else {
+                // All actions shown, reset player units for the new turn
+                this.gameState.units.resetTurn(0);
+                this.updateHighlights();
+                this.render();
+                console.log(`Turn ${this.gameState.turn} begins`);
+            }
             return;
         }
 
         const action = actions[index];
+
+        // Handle castle capture events (no modal needed, just log)
+        if (action.type === 'castle_captured') {
+            console.log(`Horde captured a castle at (${action.hex.q}, ${action.hex.r})!`);
+            this.updateTurnDisplay();
+            this.render();
+            this.showEnemyActionsSequence(actions, index + 1, onComplete);
+            return;
+        }
+
         this.showEnemyActionModal(action, () => {
             // Show next action after modal is closed
-            this.showEnemyActionsSequence(actions, index + 1);
+            this.showEnemyActionsSequence(actions, index + 1, onComplete);
         });
     }
 
@@ -1590,7 +1777,8 @@ class Game {
         const { attacker, defender, result, type } = action;
 
         // Log to console
-        const actionType = type === 'ranged_attack' ? 'fires at' : 'attacks';
+        let actionType = type === 'ranged_attack' ? 'fires at' : 'attacks';
+        if (type === 'defensive_fire') actionType = 'defensive fire on';
         console.log('=================================');
         console.log(`   ENEMY: ${attacker.getName()} ${actionType} ${defender.getName()}`);
         console.log(`   Power: ${result.attackerPower.toFixed(1)} vs ${result.defenderPower.toFixed(1)}`);
@@ -1600,30 +1788,51 @@ class Game {
         // Use the battle modal
         const modal = document.getElementById('battle-modal');
         if (modal) {
-            // Update attacker info (enemy)
-            document.getElementById('battle-attacker-name').textContent = `Enemy ${attacker.getName()}`;
-            document.getElementById('battle-attacker-before').textContent = result.attackerStrengthBefore;
-            document.getElementById('battle-attacker-after').textContent = result.attackerStrengthAfter;
+            // Update attacker info
+            if (type === 'defensive_fire') {
+                // Defensive fire: attacker is player artillery, defender is enemy unit
+                document.getElementById('battle-attacker-name').textContent = `Your ${attacker.getName()} (Def Fire)`;
+            } else {
+                document.getElementById('battle-attacker-name').textContent = `Enemy ${attacker.getName()}`;
+            }
+            document.getElementById('battle-attacker-before').textContent = Math.floor(result.attackerStrengthBefore);
+            document.getElementById('battle-attacker-after').textContent = Math.floor(result.attackerStrengthAfter);
             document.getElementById('battle-attacker-damage').textContent =
-                result.attackerDamage > 0 ? `-${result.attackerDamage}` : '0';
+                result.attackerDamage > 0 ? `-${Math.floor(result.attackerDamage)}` : '0';
 
-            // Update defender info (player)
-            document.getElementById('battle-defender-name').textContent = defender.getName();
-            document.getElementById('battle-defender-before').textContent = result.defenderStrengthBefore;
-            document.getElementById('battle-defender-after').textContent = result.defenderStrengthAfter;
+            // Update defender info
+            if (type === 'defensive_fire') {
+                document.getElementById('battle-defender-name').textContent = `Enemy ${defender.getName()}`;
+            } else {
+                document.getElementById('battle-defender-name').textContent = `Your ${defender.getName()}`;
+            }
+            document.getElementById('battle-defender-before').textContent = Math.floor(result.defenderStrengthBefore);
+            document.getElementById('battle-defender-after').textContent = Math.floor(result.defenderStrengthAfter);
             document.getElementById('battle-defender-damage').textContent =
-                result.defenderDamage > 0 ? `-${result.defenderDamage}` : '0';
+                result.defenderDamage > 0 ? `-${Math.floor(result.defenderDamage)}` : '0';
 
             // Update status message
             let status = '';
-            if (result.attackerDestroyed && result.defenderDestroyed) {
-                status = 'Mutual destruction!';
-            } else if (result.attackerDestroyed) {
-                status = `Enemy ${attacker.getName()} destroyed!`;
-            } else if (result.defenderDestroyed) {
-                status = `Your ${defender.getName()} destroyed!`;
+            if (type === 'defensive_fire') {
+                // Defensive fire: attacker=player, defender=enemy
+                if (result.attackerDestroyed && result.defenderDestroyed) {
+                    status = 'Mutual destruction!';
+                } else if (result.defenderDestroyed) {
+                    status = `Enemy ${defender.getName()} destroyed!`;
+                } else {
+                    status = `Defensive fire hits for ${Math.floor(result.defenderDamage)}`;
+                }
             } else {
-                status = 'Both units survive.';
+                // Normal enemy attack: attacker=enemy, defender=player
+                if (result.attackerDestroyed && result.defenderDestroyed) {
+                    status = 'Mutual destruction!';
+                } else if (result.attackerDestroyed) {
+                    status = `Enemy ${attacker.getName()} destroyed!`;
+                } else if (result.defenderDestroyed) {
+                    status = `Your ${defender.getName()} destroyed!`;
+                } else {
+                    status = 'Both units survive.';
+                }
             }
             document.getElementById('battle-status').textContent = status;
 
@@ -1636,7 +1845,7 @@ class Game {
             // Update battle details
             document.getElementById('battle-power-info').textContent =
                 `${result.attackerPower.toFixed(1)} vs ${result.defenderPower.toFixed(1)} (ratio: ${result.powerRatio.toFixed(2)})`;
-            document.getElementById('battle-terrain-info').textContent = type === 'ranged_attack' ? 'Ranged Attack' : 'Melee Attack';
+            document.getElementById('battle-terrain-info').textContent = type === 'defensive_fire' ? 'Defensive Fire' : (type === 'ranged_attack' ? 'Ranged Attack' : 'Melee Attack');
             document.getElementById('battle-entrench-info').textContent = 'Enemy Turn';
             document.getElementById('battle-exp-info').textContent = '-';
 
@@ -1716,12 +1925,22 @@ class Game {
             }
         }
 
-        // Show captured status for castles
+        // Show castle status
         if (cell.terrain === TerrainType.CASTLE) {
-            if (this.gameState.isCastleCaptured(hex)) {
-                info += ' [CAPTURED]';
+            if (this.gameState.gameMode === 'defense') {
+                if (this.gameState.playerCastleKeys.includes(hex.key)) {
+                    if (this.gameState.lostCastles.includes(hex.key)) {
+                        info += ' [LOST]';
+                    } else {
+                        info += ' [Defending]';
+                    }
+                }
             } else {
-                info += ' [Enemy]';
+                if (this.gameState.isCastleCaptured(hex)) {
+                    info += ' [CAPTURED]';
+                } else {
+                    info += ' [Enemy]';
+                }
             }
         }
 

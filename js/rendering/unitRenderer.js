@@ -245,7 +245,7 @@ class UnitRenderer {
         this.ctx.font = `bold ${size * 0.25}px Arial`;
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
-        this.ctx.fillText(strength.toString(), x, y);
+        this.ctx.fillText(Math.floor(strength).toString(), x, y);
     }
 
     /**

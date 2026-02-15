@@ -336,6 +336,14 @@ const LevelManager = {
             const r = this.vRowToR(playerDef.q, playerDef.vRow);
             const hex = new Hex(playerDef.q, r);
             const unit = new Unit(playerDef.type, 0, hex);  // Player 0 = player
+            // Apply custom starting strength if defined
+            if (playerDef.strength !== undefined) {
+                unit.strength = playerDef.strength;
+            }
+            // Mark auxiliary units
+            if (playerDef.auxiliary) {
+                unit.isAuxiliary = true;
+            }
             units.addUnit(unit);
         }
     }
@@ -351,6 +359,11 @@ if (typeof window !== 'undefined' && window.Level1) {
 // Register Level 2
 if (typeof window !== 'undefined' && window.Level2) {
     LevelManager.register(window.Level2);
+}
+
+// Register Level 3
+if (typeof window !== 'undefined' && window.Level3) {
+    LevelManager.register(window.Level3);
 }
 
 // Make available globally

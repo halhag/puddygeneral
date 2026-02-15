@@ -36,6 +36,9 @@ class Unit {
         // Tracking for entrenchment
         this.turnsStationary = 0;   // Turns without moving (for entrenchment calculation)
         this.lastHex = hex;         // Track last position for movement detection
+
+        // Auxiliary flag (for units that don't carry to next level)
+        this.isAuxiliary = false;
     }
 
     /**
@@ -250,7 +253,8 @@ class Unit {
             movementRemaining: this.movementRemaining,
             hasAttacked: this.hasAttacked,
             hasMoved: this.hasMoved,
-            turnsStationary: this.turnsStationary
+            turnsStationary: this.turnsStationary,
+            isAuxiliary: this.isAuxiliary
         };
     }
 
@@ -270,6 +274,7 @@ class Unit {
         unit.hasAttacked = data.hasAttacked;
         unit.hasMoved = data.hasMoved || false;
         unit.turnsStationary = data.turnsStationary || 0;
+        unit.isAuxiliary = data.isAuxiliary || false;
         return unit;
     }
 }
