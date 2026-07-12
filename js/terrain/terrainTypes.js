@@ -21,9 +21,9 @@ const TERRAIN_PROPERTIES = {
         defensiveBonus: 0,
         blocksLineOfSight: false,
         closeTerrain: false,        // Open terrain - use groundDefense
-        color: '#7ed56f',           // Bright green
-        borderColor: '#5cb85c',
-        iconColor: null
+        color: '#7a9e4f',           // Muted warm meadow green
+        borderColor: '#5f7d3c',
+        iconColor: '#4a6828'        // Grass tuft strokes
     },
     [TerrainType.WOODS]: {
         name: 'Woods',
@@ -31,9 +31,9 @@ const TERRAIN_PROPERTIES = {
         defensiveBonus: 1,
         blocksLineOfSight: true,
         closeTerrain: true,         // Close terrain - use closeDefense
-        color: '#28a745',           // Forest green
-        borderColor: '#1e7e34',
-        iconColor: '#155724'
+        color: '#6d9145',           // Grass-toned base (trees drawn on top)
+        borderColor: '#3f6d33',
+        iconColor: '#2c4f24'        // Deep canopy shadow green
     },
     [TerrainType.CASTLE]: {
         name: 'Castle',
@@ -41,9 +41,9 @@ const TERRAIN_PROPERTIES = {
         defensiveBonus: 3,
         blocksLineOfSight: false,
         closeTerrain: true,         // Close terrain - use closeDefense
-        color: '#adb5bd',           // Stone gray
-        borderColor: '#6c757d',
-        iconColor: '#495057',
+        color: '#b5aa8d',           // Warm courtyard earth - castle stone pops on it
+        borderColor: '#8a7f66',
+        iconColor: '#8a4a3a',       // Terracotta roofs
         isObjective: true
     },
     [TerrainType.MOUNTAIN]: {
@@ -52,9 +52,9 @@ const TERRAIN_PROPERTIES = {
         defensiveBonus: 0,
         blocksLineOfSight: true,
         closeTerrain: true,         // Close terrain - use closeDefense
-        color: '#8b7355',           // Brown
-        borderColor: '#6b5344',
-        iconColor: '#ffffff',       // Snow cap
+        color: '#8f867a',           // Cool grey scree foot
+        borderColor: '#635b51',
+        iconColor: '#ece8df',       // Off-white snow cap
         impassable: true
     },
     [TerrainType.HILL]: {
@@ -64,9 +64,9 @@ const TERRAIN_PROPERTIES = {
         blocksLineOfSight: false,
         closeTerrain: false,        // Open terrain - use groundDefense
         providesHeightBonus: true,
-        color: '#c4a35a',           // Sandy brown
-        borderColor: '#a08040',
-        iconColor: '#8b7355'
+        color: '#a99150',           // Dry golden-green
+        borderColor: '#8f7a42',
+        iconColor: '#8f7a42'
     },
     [TerrainType.WATER]: {
         name: 'Water',
@@ -74,9 +74,9 @@ const TERRAIN_PROPERTIES = {
         defensiveBonus: 0,
         blocksLineOfSight: false,
         closeTerrain: false,        // Open terrain
-        color: '#5dade2',           // Bright blue
-        borderColor: '#3498db',
-        iconColor: '#85c1e9',
+        color: '#3a6d8c',           // Deep teal-blue
+        borderColor: '#2d5670',
+        iconColor: '#5d93b4',       // Lighter wave crests
         impassable: true
     },
     [TerrainType.RIVER]: {
@@ -85,9 +85,9 @@ const TERRAIN_PROPERTIES = {
         defensiveBonus: 0,
         blocksLineOfSight: false,
         closeTerrain: false,        // Open terrain
-        color: '#7ed56f',           // Same as grass - river line drawn on top
-        borderColor: '#5cb85c',
-        iconColor: '#85c1e9',
+        color: '#7a9e4f',           // Same as grass - river line drawn on top
+        borderColor: '#5f7d3c',
+        iconColor: '#5d93b4',
         isRiver: true               // Special flag for river hexes
     }
 };

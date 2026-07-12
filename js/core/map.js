@@ -148,9 +148,11 @@ function createDefaultMap() {
     const map = new HexMap();
 
     // Visual dimensions in pixels (increased for fuller board)
+    // NOTE: uses MAP_GEN_HEX_SIZE (not the rendered HEX_SIZE) so the number
+    // of hexes - and therefore the map layout - never changes with visuals.
     const visualWidth = 1000;  // pixels
     const visualHeight = 860;  // pixels
-    const hexSize = CONFIG.HEX_SIZE;
+    const hexSize = CONFIG.MAP_GEN_HEX_SIZE;
 
     // Calculate hex dimensions
     const hexHeight = hexSize * Math.sqrt(3);

@@ -11,18 +11,26 @@ class Game {
         this.infoPanel = document.getElementById('hex-info');
         this.turnDisplay = document.getElementById('turn-display');
 
-        // Set canvas size
-        this.canvas.width = CONFIG.CANVAS_WIDTH;
-        this.canvas.height = CONFIG.CANVAS_HEIGHT;
-
-        // Create hex layout
-        this.layout = new HexLayout(CONFIG.HEX_SIZE, {
-            x: CONFIG.MAP_OFFSET_X,
-            y: CONFIG.MAP_OFFSET_Y
-        });
+        // Create hex layout (origin at 0,0 - the camera handles positioning)
+        this.layout = new HexLayout(CONFIG.HEX_SIZE, { x: 0, y: 0 });
 
         // Create renderer
         this.renderer = new MapRenderer(this.canvas, this.layout);
+
+        // Size canvas to its container (and keep it sized)
+        this.resizeCanvas();
+        if (typeof ResizeObserver !== 'undefined') {
+            this.resizeObserver = new ResizeObserver(() => {
+                this.resizeCanvas();
+                this.render();
+            });
+            this.resizeObserver.observe(this.canvas.parentElement);
+        } else {
+            window.addEventListener('resize', () => {
+                this.resizeCanvas();
+                this.render();
+            });
+        }
 
         // Game state
         this.gameState = null;
@@ -39,14 +47,38 @@ class Game {
         // Marketplace state
         this.marketplaceMaxUnits = 6;
 
-        // Touch panning state
-        this.panOffset = { x: 0, y: 0 };
-        this.isPanning = false;
+        // --- Camera scrolling state ---
+        // Last known pointer position in canvas CSS coords (null = not tracked)
+        this.pointerPos = null;
+        // Whether the pointer is inside the browser window
+        this.pointerInWindow = false;
+        // Whether the pointer is over interactive UI (sidebar/panels/modals)
+        this.pointerOverUI = false;
+        // Timestamp of the last touch event (filters synthetic mouse events)
+        this.lastTouchAt = -Infinity;
+        // Keys currently held for keyboard scrolling
+        this.scrollKeys = new Set();
+        // Mouse-drag panning
+        this.isDragPanning = false;
+        this.dragButton = -1;
+        this.dragStart = null;
+        this.dragCameraStart = null;
+        this.dragDistance = 0;
+        // Touch panning / pinch zoom
         this.touchStart = null;
-        this.panStartOffset = null;
+        this.touchCameraStart = null;
+        this.isTouchPanning = false;
+        this.pinchStartDist = null;
+        this.pinchStartSize = null;
+        // Scroll animation loop
+        this.scrollLoopRunning = false;
+        this.lastScrollTick = 0;
 
         // Initialize
         this.init();
+
+        // Continuous scroll loop (edge + keyboard scrolling)
+        this.startScrollLoop();
     }
 
     init() {
@@ -69,6 +101,9 @@ class Game {
 
         // Update highlights based on game phase
         this.updateHighlights();
+
+        // Start with the camera over the player's forces
+        this.centerCameraOnStart();
 
         // Initial render
         this.render();
@@ -98,13 +133,36 @@ class Game {
         // Mouse leave to clear hover
         this.canvas.addEventListener('mouseleave', () => this.handleMouseLeave());
 
-        // Touch events for mobile panning
+        // Drag panning (any mouse button; left-drag distinguishes from clicks)
+        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        document.addEventListener('mousemove', (e) => this.handleDocumentMouseMove(e));
+        document.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Track when the pointer leaves the window (stop edge scrolling)
+        document.addEventListener('mouseout', (e) => {
+            if (!e.relatedTarget) {
+                this.pointerInWindow = false;
+            }
+        });
+        window.addEventListener('blur', () => {
+            this.pointerInWindow = false;
+            this.scrollKeys.clear();
+            // A drag can never complete once focus is gone (no mouseup arrives)
+            this.cancelDragPan();
+        });
+
+        // Mouse wheel: scroll the map; ctrl+wheel zooms
+        this.canvas.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
+
+        // Touch events for mobile panning + pinch zoom
         this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
         this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
-        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: false });
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        document.addEventListener('keyup', (e) => this.handleKeyUp(e));
 
         // Sidebar buttons
         const newGameBtn = document.getElementById('new-game-btn');
@@ -249,7 +307,13 @@ class Game {
     }
 
     handleMouseMove(event) {
-        const point = this.renderer.getCanvasCoords(event);
+        // Pointer tracking for edge scrolling lives in handleDocumentMouseMove
+        // (it also sees moves over the sidebar/panels, where scrolling stops).
+
+        // While drag-panning, the document-level handler moves the camera
+        if (this.isDragPanning) return;
+
+        const point = this.pointerPos;
         const hex = this.renderer.getHexAtPoint(point);
 
         // Check if hex exists on map
@@ -265,6 +329,12 @@ class Game {
     }
 
     handleClick(event) {
+        // Ignore the click that ends a drag-pan
+        if (this.dragDistance > 6) {
+            this.dragDistance = 0;
+            return;
+        }
+
         const point = this.renderer.getCanvasCoords(event);
         const hex = this.renderer.getHexAtPoint(point);
 
@@ -1585,17 +1655,275 @@ class Game {
         this.render();
     }
 
-    // --- Touch panning for mobile ---
+    // --- Camera: canvas sizing ---
+
+    resizeCanvas() {
+        const container = this.canvas.parentElement;
+        if (!container) return;
+        const dpr = window.devicePixelRatio || 1;
+        this.renderer.resize(container.clientWidth, container.clientHeight, dpr);
+    }
+
+    // Center the camera over the player's forces (or the map center)
+    centerCameraOnStart() {
+        if (!this.gameState || !this.gameState.map) return;
+        this.renderer.ensureWorldBounds(this.gameState.map);
+
+        // Prefer player's units; during placement, use the placement hexes
+        let hexes = this.gameState.units
+            .getAllUnits()
+            .filter(u => u.playerId === 0)
+            .map(u => u.hex);
+
+        if (hexes.length === 0 && this.renderer.placementHighlights.length > 0) {
+            hexes = this.renderer.placementHighlights;
+        }
+
+        if (hexes.length > 0) {
+            let sx = 0, sy = 0;
+            for (const hex of hexes) {
+                const p = this.layout.hexToPixel(hex);
+                sx += p.x;
+                sy += p.y;
+            }
+            this.renderer.centerOnWorld({ x: sx / hexes.length, y: sy / hexes.length });
+        } else {
+            const b = this.renderer.worldBounds;
+            this.renderer.centerOnWorld({
+                x: (b.minX + b.maxX) / 2,
+                y: (b.minY + b.maxY) / 2
+            });
+        }
+    }
+
+    // --- Camera: continuous scrolling loop (edge + keyboard) ---
+
+    startScrollLoop() {
+        if (this.scrollLoopRunning) return;
+        this.scrollLoopRunning = true;
+        this.lastScrollTick = performance.now();
+
+        const tick = (now) => {
+            const dt = Math.min(0.05, (now - this.lastScrollTick) / 1000);
+            this.lastScrollTick = now;
+
+            const v = this.computeScrollVelocity();
+            if (v.x !== 0 || v.y !== 0) {
+                if (this.renderer.panBy(v.x * dt, v.y * dt)) {
+                    this.refreshHoverFromPointer();
+                    this.render();
+                }
+            }
+
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }
+
+    // Determine the current scroll velocity (px/sec) from pointer + keys
+    computeScrollVelocity() {
+        let vx = 0;
+        let vy = 0;
+
+        // Don't scroll while a modal is open or while drag/touch panning
+        if (!this.isDragPanning && !this.isTouchPanning && !this.isModalOpen()) {
+            // Edge scrolling: pointer held near (or beyond) the map edge,
+            // but not while hovering interactive UI like the sidebar
+            if (this.pointerPos && this.pointerInWindow && !this.pointerOverUI) {
+                const zone = CONFIG.EDGE_SCROLL_ZONE;
+                const speed = CONFIG.EDGE_SCROLL_SPEED;
+                const w = this.renderer.viewWidth;
+                const h = this.renderer.viewHeight;
+                const p = this.pointerPos;
+
+                // push: 0 at the inner boundary of the zone, 1 at the edge and beyond
+                const push = (dist) => Math.max(0, Math.min(1, (zone - dist) / zone));
+
+                vx += (push(p.x) * -1 + push(w - p.x)) * speed;
+                vy += (push(p.y) * -1 + push(h - p.y)) * speed;
+            }
+
+            // Keyboard scrolling (arrows / WASD)
+            const ks = CONFIG.KEY_SCROLL_SPEED;
+            if (this.scrollKeys.has('left')) vx -= ks;
+            if (this.scrollKeys.has('right')) vx += ks;
+            if (this.scrollKeys.has('up')) vy -= ks;
+            if (this.scrollKeys.has('down')) vy += ks;
+        }
+
+        return { x: vx, y: vy };
+    }
+
+    isModalOpen() {
+        return document.querySelector('.modal:not(.hidden)') !== null;
+    }
+
+    // Re-resolve the hovered hex after the camera moves under the pointer
+    refreshHoverFromPointer() {
+        if (!this.pointerPos || !this.pointerInWindow) return;
+        const hex = this.renderer.getHexAtPoint(this.pointerPos);
+        if (this.gameState.map.hasCell(hex)) {
+            this.renderer.setHoveredHex(hex);
+            this.updateInfoPanel(hex);
+        } else {
+            this.renderer.setHoveredHex(null);
+        }
+    }
+
+    // --- Camera: mouse drag panning ---
+
+    handleMouseDown(event) {
+        // Left (0), middle (1) or right (2) button starts a potential drag-pan
+        if (event.button === 1 || event.button === 2) {
+            event.preventDefault();
+        }
+        this.dragButton = event.button;
+        this.dragStart = { x: event.clientX, y: event.clientY };
+        this.dragCameraStart = { x: this.renderer.camera.x, y: this.renderer.camera.y };
+        this.dragDistance = 0;
+        this.isDragPanning = false;
+    }
+
+    handleDocumentMouseMove(event) {
+        // Ignore the compatibility mouse events browsers synthesize after
+        // touches - otherwise a tap "parks" the pointer and arms edge scroll.
+        if (performance.now() - this.lastTouchAt < 800) return;
+
+        // Track the pointer for edge scrolling. Scrolling is suppressed
+        // while hovering interactive UI (sidebar, info panel, open modals).
+        this.pointerPos = this.renderer.getCanvasCoords(event);
+        this.pointerInWindow = true;
+        this.pointerOverUI = !!(event.target && event.target.closest &&
+            event.target.closest('#sidebar, #info-panel, .modal'));
+
+        if (!this.dragStart) return;
+
+        // If the button was released outside the window (focus steal), no
+        // mouseup ever arrives - recover instead of panning with no button.
+        if (event.buttons === 0) {
+            this.handleMouseUp(event);
+            return;
+        }
+
+        const dx = event.clientX - this.dragStart.x;
+        const dy = event.clientY - this.dragStart.y;
+        this.dragDistance = Math.max(this.dragDistance, Math.hypot(dx, dy));
+
+        // Start panning once past a small threshold (distinguishes clicks)
+        if (!this.isDragPanning && this.dragDistance > 6) {
+            this.isDragPanning = true;
+            this.canvas.style.cursor = 'grabbing';
+        }
+
+        if (this.isDragPanning) {
+            this.renderer.camera.x = this.dragCameraStart.x - dx;
+            this.renderer.camera.y = this.dragCameraStart.y - dy;
+            this.renderer.clampCamera();
+            this.render();
+        }
+    }
+
+    handleMouseUp(event) {
+        if (this.isDragPanning) {
+            this.isDragPanning = false;
+            this.canvas.style.cursor = '';
+            this.refreshHoverFromPointer();
+            this.render();
+        }
+        this.dragStart = null;
+        this.dragCameraStart = null;
+        this.dragButton = -1;
+        // Note: dragDistance is intentionally kept until the click event
+        // fires so handleClick can suppress post-drag clicks. Reset it
+        // shortly after in case no click event follows (e.g. right-drag).
+        setTimeout(() => { this.dragDistance = 0; }, 0);
+    }
+
+    // Abort an in-progress drag pan (e.g. window lost focus mid-drag)
+    cancelDragPan() {
+        this.isDragPanning = false;
+        this.dragStart = null;
+        this.dragCameraStart = null;
+        this.dragButton = -1;
+        this.dragDistance = 0;
+        if (this.canvas) this.canvas.style.cursor = '';
+    }
+
+    // --- Camera: mouse wheel scroll + zoom ---
+
+    handleWheel(event) {
+        event.preventDefault();
+
+        const point = this.renderer.getCanvasCoords(event);
+
+        if (event.ctrlKey || event.metaKey) {
+            // Zoom, anchored at the cursor
+            const factor = event.deltaY < 0 ? CONFIG.ZOOM_STEP : 1 / CONFIG.ZOOM_STEP;
+            this.zoomBy(factor, point);
+        } else if (event.shiftKey) {
+            // Horizontal scroll
+            if (this.renderer.panBy(event.deltaY, 0)) {
+                this.refreshHoverFromPointer();
+                this.render();
+            }
+        } else {
+            // Vertical (and trackpad two-axis) scroll
+            if (this.renderer.panBy(event.deltaX, event.deltaY)) {
+                this.refreshHoverFromPointer();
+                this.render();
+            }
+        }
+    }
+
+    zoomBy(factor, anchorScreen = null) {
+        const newSize = this.layout.size * factor;
+        if (this.renderer.setHexSize(newSize, anchorScreen)) {
+            this.renderer.ensureWorldBounds(this.gameState.map);
+            this.refreshHoverFromPointer();
+            this.render();
+        }
+    }
+
+    // --- Camera: touch panning + pinch zoom ---
 
     handleTouchStart(e) {
-        if (e.touches.length !== 1) return;
-        const touch = e.touches[0];
-        this.touchStart = { x: touch.clientX, y: touch.clientY };
-        this.panStartOffset = { x: this.panOffset.x, y: this.panOffset.y };
-        this.isPanning = false;
+        this.lastTouchAt = performance.now();
+        // A touch means no real mouse pointer - disarm edge scrolling
+        this.pointerPos = null;
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            this.touchStart = { x: touch.clientX, y: touch.clientY };
+            this.touchCameraStart = { x: this.renderer.camera.x, y: this.renderer.camera.y };
+            this.isTouchPanning = false;
+            this.pinchStartDist = null;
+        } else if (e.touches.length === 2) {
+            // Pinch zoom begins
+            e.preventDefault();
+            this.touchStart = null;
+            this.isTouchPanning = false;
+            this.pinchStartDist = this.touchDistance(e.touches);
+            this.pinchStartSize = this.layout.size;
+        }
     }
 
     handleTouchMove(e) {
+        this.lastTouchAt = performance.now();
+        if (e.touches.length === 2 && this.pinchStartDist) {
+            e.preventDefault();
+            const dist = this.touchDistance(e.touches);
+            const rect = this.canvas.getBoundingClientRect();
+            const mid = {
+                x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left,
+                y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
+            };
+            const newSize = this.pinchStartSize * (dist / this.pinchStartDist);
+            if (this.renderer.setHexSize(newSize, mid)) {
+                this.renderer.ensureWorldBounds(this.gameState.map);
+                this.render();
+            }
+            return;
+        }
+
         if (!this.touchStart || e.touches.length !== 1) return;
         e.preventDefault(); // Prevent page scroll
 
@@ -1604,46 +1932,86 @@ class Game {
         const dy = touch.clientY - this.touchStart.y;
 
         // Only start panning after threshold to distinguish from taps
-        if (!this.isPanning && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
-            this.isPanning = true;
+        if (!this.isTouchPanning && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+            this.isTouchPanning = true;
         }
 
-        if (this.isPanning) {
-            this.panOffset.x = this.panStartOffset.x + dx;
-            this.panOffset.y = this.panStartOffset.y + dy;
-            this.clampPanOffset();
-            this.applyPanOffset();
+        if (this.isTouchPanning) {
+            this.renderer.camera.x = this.touchCameraStart.x - dx;
+            this.renderer.camera.y = this.touchCameraStart.y - dy;
+            this.renderer.clampCamera();
+            this.render();
         }
     }
 
     handleTouchEnd(e) {
-        if (!this.isPanning && this.touchStart) {
+        this.lastTouchAt = performance.now();
+        // We synthesize our own click below; stop the browser from firing
+        // compatibility mouse events (mousemove/mousedown/click) as well.
+        if (e.cancelable) e.preventDefault();
+
+        if (!this.isTouchPanning && this.touchStart) {
             // Short tap = click at the touch point
+            this.dragDistance = 0;
             this.handleClick({ clientX: this.touchStart.x, clientY: this.touchStart.y });
         }
         this.touchStart = null;
+
+        if (e.touches.length < 2 && this.pinchStartDist !== null) {
+            this.pinchStartDist = null;
+            // One finger stayed down after the pinch: hand it over to
+            // panning so the user doesn't have to lift and re-place it.
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                this.touchStart = { x: t.clientX, y: t.clientY };
+                this.touchCameraStart = { x: this.renderer.camera.x, y: this.renderer.camera.y };
+                this.isTouchPanning = true;
+            }
+        }
+
+        if (e.touches.length === 0) {
+            this.isTouchPanning = false;
+        }
     }
 
-    applyPanOffset() {
-        this.canvas.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px)`;
+    touchDistance(touches) {
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
     }
 
-    clampPanOffset() {
-        const container = this.canvas.parentElement;
-        if (!container) return;
-        const rect = container.getBoundingClientRect();
-        const minX = rect.width - this.canvas.width;
-        const minY = rect.height - this.canvas.height;
-        this.panOffset.x = Math.max(minX, Math.min(0, this.panOffset.x));
-        this.panOffset.y = Math.max(minY, Math.min(0, this.panOffset.y));
-    }
-
+    // Reset camera to the start position (used when starting a new game)
     resetPan() {
-        this.panOffset = { x: 0, y: 0 };
-        this.applyPanOffset();
+        this.renderer.worldBounds = null;
+        if (this.gameState && this.gameState.map) {
+            this.centerCameraOnStart();
+        }
     }
 
     handleKeyDown(event) {
+        // Map scrolling keys (arrows + WASD). Held keys scroll continuously
+        // via the scroll loop. Ignore when typing in an input or with ctrl.
+        if (!event.ctrlKey && !event.metaKey && !this.isModalOpen()) {
+            const scrollKey = this.scrollKeyFor(event.key);
+            if (scrollKey) {
+                this.scrollKeys.add(scrollKey);
+                event.preventDefault();
+                return;
+            }
+        }
+
+        // Zoom keys (plain +/- only; ctrl/meta+/- stays browser page zoom)
+        if (!event.ctrlKey && !event.metaKey && !this.isModalOpen()) {
+            if (event.key === '+' || event.key === '=') {
+                this.zoomBy(CONFIG.ZOOM_STEP);
+                return;
+            }
+            if (event.key === '-' || event.key === '_') {
+                this.zoomBy(1 / CONFIG.ZOOM_STEP);
+                return;
+            }
+        }
+
         switch (event.key.toLowerCase()) {
             case 'g':
                 // Toggle grid
@@ -1688,6 +2056,65 @@ class Game {
                     this.endTurn();
                 }
                 break;
+            case 'n':
+            case ' ':
+                // Select next unit that can still act, and scroll to it.
+                // Not while a modal is open - Space there should press the
+                // focused button, not move the camera behind the modal.
+                if (this.isModalOpen()) break;
+                event.preventDefault();
+                this.selectNextUnit();
+                break;
+        }
+    }
+
+    // Cycle through the player's units that can still act this turn,
+    // selecting the next one and centering the camera on it.
+    selectNextUnit() {
+        if (this.gameState.phase !== GamePhase.MOVEMENT) return;
+
+        const readyUnits = this.gameState.units.getAllUnits()
+            .filter(u => u.playerId === 0 && !u.hasAttacked && u.movementRemaining > 0);
+        if (readyUnits.length === 0) return;
+
+        let start = 0;
+        if (this.gameState.selectedUnit) {
+            const idx = readyUnits.findIndex(u => u.id === this.gameState.selectedUnit);
+            start = idx >= 0 ? idx + 1 : 0;
+        }
+
+        const unit = readyUnits[start % readyUnits.length];
+        this.gameState.selectUnit(unit.id);
+        this.updateHighlights();
+        this.renderer.centerOnHex(unit.hex);
+        this.updateInfoPanel(unit.hex);
+        this.render();
+    }
+
+    handleKeyUp(event) {
+        const scrollKey = this.scrollKeyFor(event.key);
+        if (scrollKey) {
+            this.scrollKeys.delete(scrollKey);
+        }
+    }
+
+    // Map a keyboard key to a scroll direction (or null)
+    scrollKeyFor(key) {
+        switch (key.toLowerCase()) {
+            case 'arrowleft':
+            case 'a':
+                return 'left';
+            case 'arrowright':
+            case 'd':
+                return 'right';
+            case 'arrowup':
+            case 'w':
+                return 'up';
+            case 'arrowdown':
+            case 's':
+                return 'down';
+            default:
+                return null;
         }
     }
 
@@ -1756,6 +2183,7 @@ class Game {
         // Handle castle capture events (no modal needed, just log)
         if (action.type === 'castle_captured') {
             console.log(`Horde captured a castle at (${action.hex.q}, ${action.hex.r})!`);
+            this.renderer.centerOnHex(new Hex(action.hex.q, action.hex.r));
             this.updateTurnDisplay();
             this.render();
             this.showEnemyActionsSequence(actions, index + 1, onComplete);
@@ -1775,6 +2203,13 @@ class Game {
      */
     showEnemyActionModal(action, onClose) {
         const { attacker, defender, result, type } = action;
+
+        // Scroll the camera to where the action happens so the player sees it
+        const focusUnit = defender || attacker;
+        if (focusUnit && focusUnit.hex) {
+            this.renderer.centerOnHex(focusUnit.hex);
+            this.render();
+        }
 
         // Log to console
         let actionType = type === 'ranged_attack' ? 'fires at' : 'attacks';
@@ -1975,9 +2410,9 @@ class Game {
         }
 
         GameStorage.saveGame(this.gameState);
-        this.resetPan();
         this.gameState.updateVisibility();
         this.updateHighlights();
+        this.resetPan();
         this.updateTurnDisplay();
         this.render();
         this.logGameState();
