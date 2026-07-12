@@ -316,6 +316,7 @@ function addRiverPath(map) {
         { q: 6, vRow: 13 },
         { q: 6, vRow: 14 },
         { q: 6, vRow: 15 },
+        { q: 6, vRow: 16 },  // Bottom map edge - river exits the map
     ];
 
     // Set river terrain and build path

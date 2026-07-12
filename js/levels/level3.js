@@ -149,6 +149,7 @@ Hold for 22 days. If even one castle still flies our banner, we win!`,
 
     // River as defensive barrier (roughly vertical around q=8-9)
     riverPath: [
+        { q: 9, vRow: -0.5 },  // Top map edge (odd column) - river enters the map
         { q: 9, vRow: 0 },
         { q: 9, vRow: 1 },
         { q: 9, vRow: 2 },
@@ -164,7 +165,8 @@ Hold for 22 days. If even one castle still flies our banner, we win!`,
         { q: 7, vRow: 12 },
         { q: 7, vRow: 13 },
         { q: 7, vRow: 14 },
-        { q: 7, vRow: 15 }
+        { q: 7, vRow: 15 },
+        { q: 7, vRow: 16 }   // Bottom map edge - river exits the map
     ]
 };
 

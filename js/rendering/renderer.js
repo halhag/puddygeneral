@@ -304,63 +304,109 @@ class MapRenderer {
         this.drawVignette();
     }
 
-    // Draw river as a path connecting hex centers.
-    // Each segment keeps the center -> shared-edge-midpoint -> center shape.
-    // Layers are stroked for ALL segments before the next layer so the
-    // joints between consecutive segments never show.
+    // Draw the river as one smooth, meandering waterway.
+    // The centerline runs through the hex centers (nudged by a deterministic
+    // meander so it doesn't look drawn with a ruler) and through the exact
+    // shared-edge midpoints (kept exact so bridges stay seated on the water).
+    // Both ends are extrapolated well past the terminal hexes so the river
+    // visibly flows off the map instead of stopping dead.
     drawRiverPath(riverPath) {
         if (riverPath.length < 2) return;
 
         const ctx = this.ctx;
         const size = this.layout.size;
 
-        // Build segment polylines once
-        const segments = [];
-        for (let i = 0; i < riverPath.length - 1; i++) {
-            const hex1 = new Hex(riverPath[i].q, riverPath[i].r);
-            const hex2 = new Hex(riverPath[i + 1].q, riverPath[i + 1].r);
+        // --- Build the centerline point list
+        const pts = [];
+        for (let i = 0; i < riverPath.length; i++) {
+            const p = riverPath[i];
+            const hex = new Hex(p.q, p.r);
+            const c = this.layout.hexToPixel(hex);
 
-            const center1 = this.layout.hexToPixel(hex1);
-            const center2 = this.layout.hexToPixel(hex2);
-
-            // Find the edge midpoint between the two hexes
-            let edgeMid = null;
-            for (let dir = 0; dir < 6; dir++) {
-                if (hex1.neighbor(dir).equals(hex2)) {
-                    edgeMid = this.layout.getEdgeMidpoint(hex1, dir);
-                    break;
+            if (i > 0) {
+                // Exact shared-edge midpoint with the previous river hex
+                const prevHex = new Hex(riverPath[i - 1].q, riverPath[i - 1].r);
+                for (let dir = 0; dir < 6; dir++) {
+                    if (prevHex.neighbor(dir).equals(hex)) {
+                        pts.push(this.layout.getEdgeMidpoint(prevHex, dir));
+                        break;
+                    }
                 }
             }
 
-            if (edgeMid) {
-                segments.push([center1, edgeMid, center2]);
-            }
+            // Hex center, nudged by a hash-seeded meander (stable per hex,
+            // small enough that the channel stays well inside its hex)
+            pts.push({
+                x: c.x + (hexHash(p.q, p.r, 11) - 0.5) * size * 0.34,
+                y: c.y + (hexHash(p.q, p.r, 23) - 0.5) * size * 0.26
+            });
         }
-        if (segments.length === 0) return;
+        if (pts.length < 3) return;
+
+        // --- Extend both ends off the map (past the padding, into the void)
+        const ext = size * 2.4;
+        const extend = (a, b) => {
+            const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+            return { x: a.x + ((a.x - b.x) / d) * ext, y: a.y + ((a.y - b.y) / d) * ext };
+        };
+        pts.unshift(extend(pts[0], pts[1]));
+        pts.push(extend(pts[pts.length - 1], pts[pts.length - 2]));
+
+        // --- Trace one smooth curve through the points (midpoint smoothing)
+        const trace = () => {
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length - 1; i++) {
+                const mx = (pts[i].x + pts[i + 1].x) / 2;
+                const my = (pts[i].y + pts[i + 1].y) / 2;
+                ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+            }
+            const last = pts[pts.length - 1];
+            ctx.lineTo(last.x, last.y);
+        };
 
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        // Medieval water palette: dark bank line, deep body, lighter
-        // mid-channel, thin foam highlight offset toward the light
+        // Layered water: soft bank blend into the grass, dark bank,
+        // deep body, mid channel, and a bright current line
         const layers = [
-            { color: '#274b61', width: size * 0.42, dx: 0, dy: 0 },
-            { color: '#3a6d8c', width: size * 0.34, dx: 0, dy: 0 },
-            { color: '#5d93b4', width: size * 0.16, dx: 0, dy: 0 },
-            { color: 'rgba(207, 227, 236, 0.75)', width: size * 0.06, dx: -size * 0.025, dy: -size * 0.035 }
+            ['rgba(39, 75, 97, 0.35)', size * 0.52],
+            ['#274b61', size * 0.42],
+            ['#3a6d8c', size * 0.33],
+            ['#4f86a8', size * 0.20],
+            ['#6ba0bf', size * 0.09]
         ];
-
-        for (const layer of layers) {
-            ctx.strokeStyle = layer.color;
-            ctx.lineWidth = Math.max(1, layer.width);
-            ctx.beginPath();
-            for (const [a, m, b] of segments) {
-                ctx.moveTo(a.x + layer.dx, a.y + layer.dy);
-                ctx.lineTo(m.x + layer.dx, m.y + layer.dy);
-                ctx.lineTo(b.x + layer.dx, b.y + layer.dy);
-            }
+        for (const [color, width] of layers) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = Math.max(1, width);
+            trace();
             ctx.stroke();
         }
+
+        // --- Foam flecks: short deterministic dashes drifting with the flow
+        ctx.strokeStyle = 'rgba(207, 227, 236, 0.65)';
+        ctx.lineWidth = Math.max(1, size * 0.045);
+        ctx.beginPath();
+        for (let i = 2; i < pts.length - 2; i++) {
+            const h = hexHash(i, 7, 3);
+            if (h > 0.45) continue;   // sparse
+
+            // Local flow direction and a small sideways drift
+            const dxf = pts[i + 1].x - pts[i - 1].x;
+            const dyf = pts[i + 1].y - pts[i - 1].y;
+            const len = Math.hypot(dxf, dyf) || 1;
+            const ux = dxf / len, uy = dyf / len;
+            const side = (hexHash(i, 13, 5) - 0.5) * size * 0.16;
+            const along = (hexHash(i, 17, 9) - 0.5) * size * 0.5;
+            const cx = pts[i].x + ux * along - uy * side;
+            const cy = pts[i].y + uy * along + ux * side;
+            const half = size * (0.05 + h * 0.09);
+
+            ctx.moveTo(cx - ux * half, cy - uy * half);
+            ctx.lineTo(cx + ux * half, cy + uy * half);
+        }
+        ctx.stroke();
 
         ctx.lineCap = 'butt';
         ctx.lineJoin = 'miter';

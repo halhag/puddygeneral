@@ -127,7 +127,8 @@ You have 20 days. Take both castles and the river trade routes are ours!`,
         { q: 5, vRow: 12 },    // Bridge hex (5,10) connecting to (5, vRow=13)
         { q: 5, vRow: 13 },
         { q: 5, vRow: 14 },
-        { q: 5, vRow: 15 }
+        { q: 5, vRow: 15 },
+        { q: 5, vRow: 16 }   // Bottom map edge - river exits the map
     ]
 };
 
